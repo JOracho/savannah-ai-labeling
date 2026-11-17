@@ -34,6 +34,27 @@ a{color:inherit}.topbar{background:var(--green);color:#fff;padding:14px 0}.wrap{
   <div id="dashboardMessage" class="notice hidden" role="status"></div>
   <section id="adminPanel" class="panel hidden" style="margin-bottom:22px">
     <div class="eyebrow">Savannah administration</div>
+    <section class="subpanel" style="margin:18px 0">
+      <h4>Create a Supervisely project</h4>
+      <p class="muted">Creates a new image project in Savannah's Supervisely workspace and adds its access link to the selected client account in this portal. Leave Client account UUID blank to create a test project under your administrator account.</p>
+      <form id="createSuperviselyForm">
+        <label for="newProjectTitle">Project title</label>
+        <input id="newProjectTitle" maxlength="120" required placeholder="e.g. Savannah Demo - Vehicle Detection">
+        <label for="newProjectService">Service type</label>
+        <select id="newProjectService" required style="width:100%;padding:12px;border:1px solid #d7d9d2;border-radius:4px;font:inherit">
+          <option value="">Choose a service</option>
+          <option>Image Annotation</option><option>Video Annotation</option><option>Bounding Box Annotation</option>
+          <option>Polygon Annotation</option><option>Semantic Segmentation</option><option>LiDAR / 3D Point Cloud Annotation</option>
+          <option>Object Tracking</option><option>Data Quality Assurance</option><option>Other</option>
+        </select>
+        <label for="newProjectDescription">Project description (optional)</label>
+        <textarea id="newProjectDescription" maxlength="2000" rows="3" style="width:100%;padding:12px;border:1px solid #d7d9d2;border-radius:4px;font:inherit" placeholder="Brief project scope or annotation instructions"></textarea>
+        <label for="newProjectClientId">Client account UUID (optional)</label>
+        <input id="newProjectClientId" placeholder="Leave blank for an administrator test project">
+        <button class="btn" id="createSuperviselyButton" type="submit" style="margin-top:16px">Create Supervisely project</button>
+      </form>
+      <div id="createSuperviselyMessage" class="notice hidden" role="status"></div>
+    </section>
     <h3 style="color:var(--green);font: bold 24px Georgia,serif;margin:6px 0">Assign client annotation tools</h3>
     <p class="muted">Choose a project, assign CVAT or Supervisely, and add its secure workspace URL. Only an administrator can see and use this panel.</p>
     <form id="workspaceForm">
@@ -92,6 +113,37 @@ $('authForm').addEventListener('submit',async(e)=>{
 });
 function labelStatus(s){return ({project_submitted:'Project submitted',data_received:'Data received',data_verified:'Data verified',annotation_in_progress:'Annotation in progress',quality_assurance:'Quality assurance',client_review:'Client review',revision_required:'Revision required',completed:'Completed',delivered:'Delivered',on_hold:'On hold'})[s]||s;}
 let adminProjects=[];
+let currentPortalUser = null;
+$('createSuperviselyForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const button = $('createSuperviselyButton');
+  button.disabled = true;
+  $('createSuperviselyMessage').classList.add('hidden');
+  try {
+    const payload = {
+      title: $('newProjectTitle').value.trim(),
+      service_type: $('newProjectService').value,
+      description: $('newProjectDescription').value.trim(),
+      client_user_id: $('newProjectClientId').value.trim() || undefined
+    };
+    const { data, error } = await supabase.functions.invoke('create-supervisely-project', { body: payload });
+    if (error) throw error;
+    if (!data?.success) throw new Error(data?.error || 'The project could not be created.');
+    message('createSuperviselyMessage', 'Supervisely project created and linked to the client portal. Project ID: ' + data.supervisely_project_id, 'success');
+    $('newProjectTitle').value = '';
+    $('newProjectService').value = '';
+    $('newProjectDescription').value = '';
+    $('newProjectClientId').value = '';
+    await loadAdminPanel();
+    if (currentPortalUser && currentPortalUser.id === (payload.client_user_id || currentPortalUser.id)) {
+      await showDashboard(currentPortalUser);
+    }
+  } catch (err) {
+    message('createSuperviselyMessage', err.message || 'Unable to create the Supervisely project.', 'error');
+  } finally {
+    button.disabled = false;
+  }
+});
 async function loadAdminPanel(){
  $('adminPanel').classList.remove('hidden');
  const select=$('adminProject');select.replaceChildren();
@@ -126,6 +178,7 @@ $('workspaceForm').addEventListener('submit',async(e)=>{
  finally{$('saveWorkspace').disabled=false;}
 });
 async function showDashboard(user){
+ currentPortalUser = user;
  $('authPanel').classList.add('hidden'); $('dashboard').classList.remove('hidden');
  $('welcomeTitle').textContent='Your projects'; $('welcomeEmail').textContent=user.email||'';
  const isAdmin=user.app_metadata?.role==='admin';
