@@ -71,6 +71,22 @@ a{color:inherit}.topbar{background:var(--green);color:#fff;padding:14px 0}.wrap{
       <button class="btn" id="saveWorkspace" type="submit" style="margin-top:16px">Save workspace assignment</button>
     </form>
     <div id="adminMessage" class="notice hidden" role="status"></div>
+    <section class="subpanel" style="margin-top:22px">
+      <h3 style="color:var(--green);font: bold 24px Georgia,serif;margin:0 0 6px">Upload completed deliverables</h3>
+      <p class="muted">Upload completed annotation exports or project documents. The selected project's client will be able to access the files in their Deliverables section. Maximum file size: 100 MB.</p>
+      <form id="deliverableUploadForm">
+        <label for="deliverableProject">Client project</label>
+        <select id="deliverableProject" required style="width:100%;padding:12px;border:1px solid #d7d9d2;border-radius:4px;font:inherit">
+          <option value="">Loading projects…</option>
+        </select>
+        <label for="deliverableFile">Choose file</label>
+        <input id="deliverableFile" type="file" accept=".tar,.tar.gz,.tgz,.zip,.json,.csv,.pdf" required>
+        <label for="deliverableDescription">Description (optional)</label>
+        <textarea id="deliverableDescription" maxlength="500" rows="2" style="width:100%;padding:12px;border:1px solid #d7d9d2;border-radius:4px;font:inherit" placeholder="e.g. Final Supervisely annotation export"></textarea>
+        <button class="btn" id="uploadDeliverableButton" type="submit" style="margin-top:16px">Upload deliverable</button>
+      </form>
+      <div id="deliverableUploadMessage" class="notice hidden" role="status"></div>
+    </section>
   </section>
   <div id="projects" class="project-list"></div>
 </section>
@@ -150,7 +166,17 @@ async function loadAdminPanel(){
  const placeholder=document.createElement('option');placeholder.value='';placeholder.textContent='Loading projects…';select.append(placeholder);
  const {data,error}=await supabase.from('projects').select('id,project_code,title,client_user_id,annotation_tool,annotation_workspace_url').order('created_at',{ascending:false});
  if(error) throw error;
- adminProjects=data||[];select.replaceChildren();
+ adminProjects=data||[];
+ const deliverableSelect=$('deliverableProject');
+ deliverableSelect.replaceChildren();
+ if(adminProjects.length){
+   for(const p of adminProjects){const opt=document.createElement('option');opt.value=p.id;opt.textContent=(p.project_code?p.project_code+' · ':'')+p.title;deliverableSelect.append(opt);}
+   deliverableSelect.value=adminProjects[0].id;
+ } else {
+   const emptyOpt=document.createElement('option');emptyOpt.value='';emptyOpt.textContent='No projects available';deliverableSelect.append(emptyOpt);
+   $('uploadDeliverableButton').disabled=true;
+ }
+ select.replaceChildren();
  if(!adminProjects.length){const opt=document.createElement('option');opt.value='';opt.textContent='No projects found';select.append(opt);$('saveWorkspace').disabled=true;return;}
  $('saveWorkspace').disabled=false;
  for(const p of adminProjects){const opt=document.createElement('option');opt.value=p.id;opt.textContent=(p.project_code?p.project_code+' · ':'')+p.title;select.append(opt);}
@@ -176,6 +202,65 @@ $('workspaceForm').addEventListener('submit',async(e)=>{
   message('adminMessage','Workspace assignment saved. The client will see the updated tool and link in their project dashboard.','success');
  }catch(err){message('adminMessage',err.message||'Unable to save the workspace assignment.','error');}
  finally{$('saveWorkspace').disabled=false;}
+});
+$('deliverableUploadForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const button = $('uploadDeliverableButton');
+  const projectId = $('deliverableProject').value;
+  const file = $('deliverableFile').files?.[0];
+  const description = $('deliverableDescription').value.trim();
+  if (!projectId || !file) {
+    message('deliverableUploadMessage', 'Choose a project and a file before uploading.', 'error');
+    return;
+  }
+  if (file.size > 100 * 1024 * 1024) {
+    message('deliverableUploadMessage', 'This file is larger than the 100 MB limit. Please use a smaller archive.', 'error');
+    return;
+  }
+  const allowedExtensions = /\.(tar|tar\.gz|tgz|zip|json|csv|pdf)$/i;
+  if (!allowedExtensions.test(file.name)) {
+    message('deliverableUploadMessage', 'Choose a TAR, TAR.GZ, TGZ, ZIP, JSON, CSV or PDF file.', 'error');
+    return;
+  }
+  const lowerName = file.name.toLowerCase();
+  let contentType = file.type || 'application/octet-stream';
+  if (lowerName.endsWith('.tar')) contentType = 'application/x-tar';
+  else if (lowerName.endsWith('.tar.gz') || lowerName.endsWith('.tgz')) contentType = 'application/gzip';
+  else if (lowerName.endsWith('.zip')) contentType = 'application/zip';
+  else if (lowerName.endsWith('.json')) contentType = 'application/json';
+  else if (lowerName.endsWith('.csv')) contentType = 'text/csv';
+  else if (lowerName.endsWith('.pdf')) contentType = 'application/pdf';
+  const safeName = file.name.replace(/[^a-zA-Z0-9._-]+/g, '_').slice(-150);
+  const storagePath = projectId + '/' + crypto.randomUUID() + '-' + safeName;
+  button.disabled = true;
+  message('deliverableUploadMessage', 'Uploading file securely…');
+  let uploaded = false;
+  try {
+    const { error: uploadError } = await supabase.storage.from('project-deliverables').upload(storagePath, file, {
+      contentType,
+      upsert: false
+    });
+    if (uploadError) throw uploadError;
+    uploaded = true;
+    const { error: insertError } = await supabase.from('project_deliverables').insert({
+      project_id: projectId,
+      file_name: file.name,
+      storage_path: storagePath,
+      description: description || null,
+      uploaded_by: currentPortalUser.id
+    });
+    if (insertError) throw insertError;
+    $('deliverableFile').value = '';
+    $('deliverableDescription').value = '';
+    message('deliverableUploadMessage', 'Deliverable uploaded successfully. The assigned client can now find it in the Deliverables section of their project dashboard.', 'success');
+  } catch (err) {
+    if (uploaded) {
+      await supabase.storage.from('project-deliverables').remove([storagePath]);
+    }
+    message('deliverableUploadMessage', err.message || 'Unable to upload this deliverable.', 'error');
+  } finally {
+    button.disabled = false;
+  }
 });
 async function showDashboard(user){
  currentPortalUser = user;
