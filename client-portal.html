@@ -170,6 +170,7 @@ async function loadAdminPanel(){
  const deliverableSelect=$('deliverableProject');
  deliverableSelect.replaceChildren();
  if(adminProjects.length){
+   $('uploadDeliverableButton').disabled=false;
    for(const p of adminProjects){const opt=document.createElement('option');opt.value=p.id;opt.textContent=(p.project_code?p.project_code+' · ':'')+p.title;deliverableSelect.append(opt);}
    deliverableSelect.value=adminProjects[0].id;
  } else {
