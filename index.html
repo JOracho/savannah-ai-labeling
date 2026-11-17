@@ -11,6 +11,17 @@
 @media(max-width:800px){.links{display:none;position:absolute;top:68px;left:0;right:0;background:var(--green);padding:18px 4%;flex-direction:column;align-items:flex-start;z-index:5}.links.open{display:flex}.menu{display:block}.grid,.steps,.samples{grid-template-columns:repeat(2,1fr)}.values{grid-template-columns:repeat(2,1fr)}.split{grid-template-columns:1fr}.forms{grid-template-columns:1fr}.hero{padding:75px 0}}
 @media(max-width:520px){.grid,.steps,.samples{grid-template-columns:1fr}.hero h1{font-size:43px}.section{padding:58px 0}}
   .service img{width:100%;height:180px;object-fit:cover;display:block;border-radius:5px;margin-bottom:16px}
+
+/* Password recovery panel: hidden unless Supabase confirms a recovery session. */
+.recovery-overlay{display:none;position:fixed;inset:0;z-index:1000;background:rgba(10,25,17,.82);padding:24px;align-items:center;justify-content:center}
+.recovery-overlay.visible{display:flex}
+.recovery-card{width:min(460px,100%);background:var(--ivory);color:var(--ink);padding:30px;border:1px solid var(--gold);border-radius:8px;box-shadow:0 18px 60px #0006}
+.recovery-card h2{font: bold 30px Georgia,serif;color:var(--green);margin:0 0 8px}
+.recovery-card p{color:var(--muted);font-size:14px}
+.recovery-card button{cursor:pointer;margin-top:16px}
+.recovery-message{font-size:13px;margin-top:14px;min-height:20px}
+.recovery-message.error{color:#a12b2b}.recovery-message.success{color:#245b36}
+
 </style>
 </head>
 <body>
@@ -67,4 +78,84 @@ document.getElementById('menuBtn').addEventListener('click',()=>document.getElem
 document.querySelectorAll('#navLinks a').forEach(a=>a.addEventListener('click',()=>document.getElementById('navLinks').classList.remove('open')));
 
 </script>
+
+<div class="recovery-overlay" id="recoveryOverlay" role="dialog" aria-modal="true" aria-labelledby="recoveryTitle">
+  <div class="recovery-card">
+    <div class="eyebrow">Savannah AI Labeling · Account security</div>
+    <h2 id="recoveryTitle">Create a new password</h2>
+    <p>Your password reset link has been verified. Choose a new password for your account.</p>
+    <form id="recoveryForm">
+      <label for="recoveryPassword">New password</label>
+      <input id="recoveryPassword" type="password" autocomplete="new-password" minlength="8" required>
+      <label for="recoveryConfirm">Confirm new password</label>
+      <input id="recoveryConfirm" type="password" autocomplete="new-password" minlength="8" required>
+      <button class="btn" id="recoverySubmit" type="submit">Update Password</button>
+      <div class="recovery-message" id="recoveryMessage" role="status" aria-live="polite"></div>
+    </form>
+  </div>
+</div>
+<script type="module">
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.49.1';
+
+const recoverySupabase = createClient(
+  'https://vlbmtkkkpqaumdhysoby.supabase.co',
+  'sb_publishable_Dr98oLwQUvDSur611h0S3w_W-Xgw66L'
+);
+
+const recoveryOverlay = document.getElementById('recoveryOverlay');
+const recoveryForm = document.getElementById('recoveryForm');
+const recoveryMessage = document.getElementById('recoveryMessage');
+const recoverySubmit = document.getElementById('recoverySubmit');
+
+function showRecoveryForm() {
+  recoveryOverlay.classList.add('visible');
+  document.getElementById('recoveryPassword').focus();
+}
+
+recoverySupabase.auth.onAuthStateChange((event, session) => {
+  if (event === 'PASSWORD_RECOVERY' && session) {
+    showRecoveryForm();
+  }
+});
+
+recoveryForm.addEventListener('submit', async (event) => {
+  event.preventDefault();
+  const password = document.getElementById('recoveryPassword').value;
+  const confirmation = document.getElementById('recoveryConfirm').value;
+
+  recoveryMessage.textContent = '';
+  recoveryMessage.className = 'recovery-message';
+
+  if (password.length < 8) {
+    recoveryMessage.textContent = 'Use at least 8 characters for your new password.';
+    recoveryMessage.classList.add('error');
+    return;
+  }
+  if (password !== confirmation) {
+    recoveryMessage.textContent = 'The passwords do not match. Please check them and try again.';
+    recoveryMessage.classList.add('error');
+    return;
+  }
+
+  recoverySubmit.disabled = true;
+  recoverySubmit.textContent = 'Updating…';
+
+  const { error } = await recoverySupabase.auth.updateUser({ password });
+
+  if (error) {
+    recoveryMessage.textContent = error.message || 'The password could not be updated. Request a fresh reset link and try again.';
+    recoveryMessage.classList.add('error');
+    recoverySubmit.disabled = false;
+    recoverySubmit.textContent = 'Update Password';
+    return;
+  }
+
+  recoveryForm.reset();
+  recoveryMessage.textContent = 'Your password has been updated successfully. You can now close this panel and sign in with your new password.';
+  recoveryMessage.classList.add('success');
+  recoverySubmit.textContent = 'Password Updated';
+  recoverySubmit.disabled = true;
+});
+</script>
+
 </body></html>
