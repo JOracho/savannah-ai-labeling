@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="description" content="Secure client project portal for Savannah AI Labeling.">
+<title>Client Portal | Savannah AI Labeling</title>
+<style>
+:root{--green:#183D2B;--green2:#28563d;--gold:#C6A46A;--sand:#E9DFC9;--ivory:#F7F5EF;--ink:#1e2922;--muted:#68736b;--white:#fff}
+*{box-sizing:border-box}body{margin:0;background:var(--ivory);color:var(--ink);font:16px/1.6 Arial,Helvetica,sans-serif}
+a{color:inherit}.topbar{background:var(--green);color:#fff;padding:14px 0}.wrap{width:min(1080px,92%);margin:auto}.nav{display:flex;align-items:center;justify-content:space-between;gap:16px}.brand{display:flex;align-items:center;gap:11px;font-weight:800;text-decoration:none}.mark{display:grid;place-items:center;width:42px;height:42px;border:2px solid var(--gold);border-radius:50%;color:var(--gold);font:23px Georgia,serif}.nav a.back{color:#fff;text-decoration:none}.hero{background:var(--green);color:#fff;padding:46px 0 56px}.eyebrow{color:var(--gold);font-size:12px;font-weight:800;letter-spacing:2px;text-transform:uppercase}.hero h1{font: bold clamp(34px,5vw,54px)/1.1 Georgia,serif;margin:10px 0}.hero p{color:#e2e8e2;max-width:650px;margin:0}.main{padding:42px 0 70px}.panel{background:#fff;border:1px solid #e7e3d8;border-radius:9px;padding:26px;box-shadow:0 8px 28px #183d2b0b}.auth{max-width:520px;margin:0 auto}.tabs{display:flex;gap:8px;margin-bottom:20px}.tabs button,.btn{border:1px solid var(--gold);border-radius:4px;padding:11px 16px;font-weight:700;cursor:pointer}.tabs button{background:#fff;color:var(--green)}.tabs button.active,.btn{background:var(--gold);color:#17291d}.btn.secondary{background:#fff;color:var(--green)}label{display:block;font-size:13px;font-weight:700;margin:13px 0 5px}input{width:100%;padding:12px;border:1px solid #d7d9d2;border-radius:4px;font:inherit}button:disabled{opacity:.55;cursor:not-allowed}.hint,.muted{color:var(--muted);font-size:13px}.notice{padding:12px 14px;border-radius:5px;background:#f1eee5;margin:14px 0;font-size:14px}.notice.error{background:#fff0ed;color:#8b2f20}.notice.success{background:#edf6ed;color:#245a32}.hidden{display:none!important}.dashboard-head{display:flex;justify-content:space-between;align-items:center;gap:15px;flex-wrap:wrap;margin-bottom:22px}.dashboard-head h2{font: bold 30px Georgia,serif;color:var(--green);margin:0}.stats{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-bottom:20px}.stat{background:#fff;border:1px solid #e7e3d8;border-radius:8px;padding:17px}.stat strong{display:block;color:var(--green);font: bold 26px Georgia,serif}.stat span{font-size:13px;color:var(--muted)}.project-list{display:grid;gap:15px}.project h3{color:var(--green);margin:0}.project-top{display:flex;justify-content:space-between;gap:15px;flex-wrap:wrap}.pill{display:inline-block;background:#f0eee7;color:#455449;padding:4px 9px;border-radius:20px;font-size:12px}.progress{height:9px;background:#ecebe4;border-radius:20px;overflow:hidden;margin:13px 0 6px}.progress span{display:block;height:100%;background:var(--green2);width:0}.project-grid{display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-top:18px}.subpanel{background:#faf9f5;border:1px solid #ece8dd;border-radius:7px;padding:15px}.subpanel h4{margin:0 0 10px;color:var(--green)}.updates{padding-left:18px;margin:0}.updates li{margin:9px 0}.footer{background:#10291d;color:#dfe5df;padding:22px 0;font-size:13px}@media(max-width:650px){.stats{grid-template-columns:1fr}.project-grid{grid-template-columns:1fr}.panel{padding:19px}}
+</style>
+</head>
+<body>
+<header class="topbar"><div class="wrap nav"><a class="brand" href="./"><span class="mark">S</span><span>SAVANNAH AI LABELING</span></a><a class="back" href="./">← Back to website</a></div></header>
+<section class="hero"><div class="wrap"><div class="eyebrow">Secure client workspace</div><h1>Your projects. Clear progress.</h1><p>Sign in to follow project milestones, review updates and access completed deliverables from Savannah AI Labeling.</p></div></section>
+<main class="main wrap">
+<section id="authPanel" class="panel auth">
+  <div class="tabs"><button id="loginTab" class="active" type="button">Sign in</button><button id="signupTab" type="button">Create account</button></div>
+  <h2 id="authTitle" style="color:var(--green);font: bold 27px Georgia,serif;margin:0">Welcome back</h2>
+  <p class="muted" id="authIntro">Sign in to view your project dashboard.</p>
+  <form id="authForm">
+    <div id="nameField" class="hidden"><label for="fullName">Full name</label><input id="fullName" autocomplete="name"></div>
+    <label for="email">Email address</label><input id="email" type="email" autocomplete="email" required>
+    <label for="password">Password</label><input id="password" type="password" minlength="8" autocomplete="current-password" required>
+    <button class="btn" id="authSubmit" type="submit" style="margin-top:18px">Sign in</button>
+  </form>
+  <div id="authMessage" class="notice hidden" role="status"></div>
+  <p class="hint">Use the email address associated with your Savannah AI Labeling client account. If you are new, create an account first.</p>
+</section>
+<section id="dashboard" class="hidden">
+  <div class="dashboard-head"><div><div class="eyebrow">Client dashboard</div><h2 id="welcomeTitle">Your projects</h2><p class="muted" id="welcomeEmail"></p></div><button class="btn secondary" id="signOut" type="button">Sign out</button></div>
+  <div class="stats"><div class="stat"><strong id="totalProjects">0</strong><span>Total projects</span></div><div class="stat"><strong id="activeProjects">0</strong><span>Active projects</span></div><div class="stat"><strong id="completedProjects">0</strong><span>Completed projects</span></div></div>
+  <div id="dashboardMessage" class="notice hidden" role="status"></div>
+  <div id="projects" class="project-list"></div>
+</section>
+</main>
+<footer class="footer"><div class="wrap">© <span id="year"></span> Savannah AI Labeling · Ground Truth. Built with Precision.</div></footer>
+<script type="module">
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.49.1';
+const SUPABASE_URL = 'https://vlbmtkkkpqaumdhysoby.supabase.co';
+const SUPABASE_PUBLISHABLE_KEY = 'sb_publishable_Dr98oLwQUvDSur611h0S3w_W-Xgw66L';
+const supabase = createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY);
+const $ = (id) => document.getElementById(id);
+let mode = 'login';
+$('year').textContent = new Date().getFullYear();
+function message(id, text, type='') { const el=$(id); el.textContent=text; el.className='notice'+(type?' '+type:''); }
+function setMode(next) {
+  mode=next; $('loginTab').classList.toggle('active',mode==='login'); $('signupTab').classList.toggle('active',mode==='signup');
+  $('nameField').classList.toggle('hidden',mode!=='signup'); $('fullName').required=mode==='signup';
+  $('authTitle').textContent=mode==='login'?'Welcome back':'Create your client account';
+  $('authIntro').textContent=mode==='login'?'Sign in to view your project dashboard.':'Register with your work email to access project updates.';
+  $('authSubmit').textContent=mode==='login'?'Sign in':'Create account';
+  $('authMessage').classList.add('hidden');
+}
+$('loginTab').addEventListener('click',()=>setMode('login'));
+$('signupTab').addEventListener('click',()=>setMode('signup'));
+$('authForm').addEventListener('submit',async(e)=>{
+ e.preventDefault(); $('authSubmit').disabled=true;
+ try {
+  const email=$('email').value.trim(), password=$('password').value;
+  if(mode==='signup'){
+    const {data,error}=await supabase.auth.signUp({email,password,options:{data:{full_name:$('fullName').value.trim()}}});
+    if(error) throw error;
+    if(data.session){ await showDashboard(data.user); }
+    else message('authMessage','Account created. Check your email to confirm your address, then return here to sign in.','success');
+  } else {
+    const {data,error}=await supabase.auth.signInWithPassword({email,password}); if(error) throw error;
+    await showDashboard(data.user);
+  }
+ } catch(err){message('authMessage',err.message||'Unable to complete sign in.','error');}
+ finally{$('authSubmit').disabled=false;}
+});
+function labelStatus(s){return ({project_submitted:'Project submitted',data_received:'Data received',data_verified:'Data verified',annotation_in_progress:'Annotation in progress',quality_assurance:'Quality assurance',client_review:'Client review',revision_required:'Revision required',completed:'Completed',delivered:'Delivered',on_hold:'On hold'})[s]||s;}
+async function showDashboard(user){
+ $('authPanel').classList.add('hidden'); $('dashboard').classList.remove('hidden');
+ $('welcomeTitle').textContent='Your projects'; $('welcomeEmail').textContent=user.email||'';
+ const {data:projects,error}=await supabase.from('projects').select('id,project_code,title,service_type,description,status,progress_percent,due_date,created_at').eq('client_user_id',user.id).order('created_at',{ascending:false});
+ if(error) throw error;
+ const list=projects||[];
+ $('totalProjects').textContent=list.length;
+ $('activeProjects').textContent=list.filter(p=>!['completed','delivered','on_hold'].includes(p.status)).length;
+ $('completedProjects').textContent=list.filter(p=>['completed','delivered'].includes(p.status)).length;
+ const root=$('projects'); root.replaceChildren();
+ if(!list.length){const empty=document.createElement('div');empty.className='panel';empty.innerHTML='<h3 style="color:var(--green);margin-top:0">No projects linked yet</h3><p class="muted">When Savannah AI Labeling creates a project under your account, it will appear here with its current stage and progress.</p><a class="btn" href="./#contact">Discuss a project</a>';root.append(empty);return;}
+ for(const p of list){
+   const card=document.createElement('article');card.className='panel project';
+   const top=document.createElement('div');top.className='project-top';
+   const heading=document.createElement('div');const h=document.createElement('h3');h.textContent=p.title;const meta=document.createElement('p');meta.className='muted';meta.textContent=(p.project_code? p.project_code+' · ':'')+p.service_type;heading.append(h,meta);
+   const pill=document.createElement('span');pill.className='pill';pill.textContent=labelStatus(p.status);top.append(heading,pill);
+   const progress=document.createElement('div');progress.className='progress';const bar=document.createElement('span');bar.style.width=(p.progress_percent||0)+'%';progress.append(bar);
+   const pct=document.createElement('div');pct.className='muted';pct.textContent=(p.progress_percent||0)+'% complete'+(p.due_date?' · Target delivery: '+new Date(p.due_date+'T00:00:00').toLocaleDateString():'');
+   const desc=document.createElement('p');desc.textContent=p.description||'Project updates and deliverables will appear below.';card.append(top,progress,pct,desc);
+   const cols=document.createElement('div');cols.className='project-grid';
+   const updateBox=document.createElement('div');updateBox.className='subpanel';const uh=document.createElement('h4');uh.textContent='Latest updates';const ul=document.createElement('ul');ul.className='updates';updateBox.append(uh,ul);
+   const fileBox=document.createElement('div');fileBox.className='subpanel';const fh=document.createElement('h4');fh.textContent='Deliverables';const files=document.createElement('div');files.className='muted';files.textContent='No deliverables uploaded yet.';fileBox.append(fh,files);cols.append(updateBox,fileBox);card.append(cols);root.append(card);
+   const [{data:updates,error:ue},{data:deliverables,error:de}]=await Promise.all([
+    supabase.from('project_updates').select('title,body,status,progress_percent,created_at').eq('project_id',p.id).eq('visible_to_client',true).order('created_at',{ascending:false}).limit(8),
+    supabase.from('project_deliverables').select('file_name,storage_path,description').eq('project_id',p.id).order('created_at',{ascending:false})
+   ]);
+   if(ue) throw ue;if(de) throw de;
+   if(updates?.length){ul.replaceChildren();for(const u of updates){const li=document.createElement('li');const strong=document.createElement('strong');strong.textContent=u.title+' ';const span=document.createElement('span');span.textContent=u.body;const small=document.createElement('div');small.className='hint';small.textContent=new Date(u.created_at).toLocaleString();li.append(strong,span,small);ul.append(li);}}
+   if(deliverables?.length){files.replaceChildren();for(const f of deliverables){const row=document.createElement('p');const link=document.createElement('a');link.href='#';link.textContent='↓ '+f.file_name;link.addEventListener('click',async(ev)=>{ev.preventDefault();const {data,error}=await supabase.storage.from('project-deliverables').createSignedUrl(f.storage_path,60);if(error){message('dashboardMessage','Unable to open this file: '+error.message,'error');return;}window.open(data.signedUrl,'_blank','noopener');});row.append(link);if(f.description){const note=document.createElement('small');note.className='hint';note.textContent=' · '+f.description;row.append(note);}files.append(row);}}
+ }
+}
+$('signOut').addEventListener('click',async()=>{await supabase.auth.signOut();$('dashboard').classList.add('hidden');$('authPanel').classList.remove('hidden');setMode('login');});
+supabase.auth.onAuthStateChange((_event,session)=>{if(session?.user && $('dashboard').classList.contains('hidden')) showDashboard(session.user).catch(e=>message('dashboardMessage',e.message,'error'));});
+const {data:{session}}=await supabase.auth.getSession();
+if(session?.user){try{await showDashboard(session.user);}catch(e){message('dashboardMessage',e.message,'error');}}
+</script>
+</body>
+</html>
