@@ -100,7 +100,7 @@ $('authForm').addEventListener('submit',async(e)=>{
  try {
   const email=$('email').value.trim(), password=$('password').value;
   if(mode==='signup'){
-    const {data,error}=await supabase.auth.signUp({email,password,options:{data:{full_name:$('fullName').value.trim()}}});
+    const {data,error}=await supabase.auth.signUp({email,password,options:{data:{full_name:$('fullName').value.trim()},emailRedirectTo:'https://joracho.github.io/savannah-ai-labeling/client-portal.html'}});
     if(error) throw error;
     if(data.session){ await showDashboard(data.user); }
     else message('authMessage','Account created. Check your email to confirm your address, then return here to sign in.','success');
