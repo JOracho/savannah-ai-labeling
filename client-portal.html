@@ -401,6 +401,21 @@ async function loadAnnotatorDashboard(user){
       });
       card.append(actionButton);
     }
+    if(String(assignment.platform||'').toLowerCase()==='supervisely' && String(project.annotation_tool||'').toLowerCase()==='supervisely'){
+      const submitBox=document.createElement('div');submitBox.className='subpanel';submitBox.style.marginTop='14px';
+      const title=document.createElement('h4');title.textContent='Submit completed Supervisely work';title.style.color='var(--green)';submitBox.append(title);
+      const help=document.createElement('p');help.className='hint';help.textContent='After saving your labels in Supervisely, enter the dataset ID and image ID for the completed image. Savannah imports the annotation and sends this assignment to review.';submitBox.append(help);
+      const form=document.createElement('form');form.style.display='grid';form.style.gap='8px';
+      const dl=document.createElement('label');dl.textContent='Supervisely dataset ID';const di=document.createElement('input');di.inputMode='numeric';di.pattern='[0-9]+';di.required=true;di.placeholder='Dataset ID';
+      const il=document.createElement('label');il.textContent='Supervisely image ID';const ii=document.createElement('input');ii.inputMode='numeric';ii.pattern='[0-9]+';ii.required=true;ii.placeholder='Image ID';
+      const btn=document.createElement('button');btn.type='submit';btn.className='btn';btn.textContent='Submit annotation for review';
+      const status=document.createElement('p');status.className='hint';status.setAttribute('role','status');
+      form.append(dl,di,il,ii,btn,status);form.addEventListener('submit',async(ev)=>{ev.preventDefault();btn.disabled=true;status.textContent='Importing your saved annotation…';try{
+        const {data:result,error:invokeError}=await supabase.functions.invoke('supervisely-annotation-review',{body:{action:'submit',assignment_id:assignment.id,project_id:project.id,external_dataset_id:di.value.trim(),external_image_id:ii.value.trim(),external_project_id:String(project.annotation_workspace_url||'').split('/projects/')[1]?.split('/')[0]}});
+        if(invokeError)throw invokeError;if(!result?.success)throw new Error(result?.error||'Submission failed.');status.textContent=result.message||'Submitted for review.';await loadAnnotatorDashboard(user);
+      }catch(err){status.textContent=err.message||'Unable to submit annotation.';btn.disabled=false;}});
+      submitBox.append(form);card.append(submitBox);
+    }
     root.append(card);
   }
 }
