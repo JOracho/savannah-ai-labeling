@@ -472,7 +472,7 @@ $('createSuperviselyForm').addEventListener('submit', async (e) => {
     $('newProjectClientId').value = '';
     await loadAdminPanel();
     if (currentPortalUser && currentPortalUser.id === (payload.client_user_id || currentPortalUser.id)) {
-      await showDashboard(currentPortalUser);
+      await showDashboard(currentPortalUser,true);
     }
   } catch (err) {
     message('createSuperviselyMessage', err.message || 'Unable to create the Supervisely project.', 'error');
@@ -603,7 +603,8 @@ $('deliverableUploadForm').addEventListener('submit', async (e) => {
     button.disabled = false;
   }
 });
-async function showDashboard(user){
+async function showDashboard(user, forceRefresh=false){
+ if(!forceRefresh && currentPortalUser?.id===user.id && !$('dashboard').classList.contains('hidden')) return;
  currentPortalUser = user;
  $('authPanel').classList.add('hidden'); $('dashboard').classList.remove('hidden');
  $('welcomeTitle').textContent='Your projects'; $('welcomeEmail').textContent=user.email||'';
