@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>CVAT Sample Recovery | Savannah AI Labeling</title>
+<style>
+:root{--green:#183D2B;--gold:#C6A46A;--ivory:#F7F5EF;--ink:#1e2922;--muted:#68736b}
+*{box-sizing:border-box}body{margin:0;background:var(--ivory);color:var(--ink);font:16px/1.6 Arial,sans-serif}
+header{background:var(--green);color:#fff;padding:18px 5%}header a{color:#fff;text-decoration:none;font-weight:700}
+main{width:min(680px,92%);margin:42px auto}.panel{background:#fff;border:1px solid #e7e3d8;border-radius:9px;padding:26px;box-shadow:0 8px 28px #183d2b0b}
+h1{font: bold 32px Georgia,serif;color:var(--green);margin:0 0 8px}p{color:var(--muted)}label{display:block;font-size:13px;font-weight:700;margin:15px 0 6px}
+input{width:100%;padding:12px;border:1px solid #d7d9d2;border-radius:4px;font:inherit}
+button{margin-top:18px;background:var(--gold);color:#17291d;border:0;border-radius:4px;padding:12px 17px;font-weight:700;cursor:pointer}
+button:disabled{opacity:.55;cursor:not-allowed}.notice{padding:13px 15px;border-radius:5px;background:#f1eee5;margin-top:16px;white-space:pre-wrap;overflow-wrap:anywhere}.error{background:#fff0ed;color:#8b2f20}.success{background:#edf6ed;color:#245a32}.hidden{display:none!important}.hint{font-size:13px}
+</style>
+</head>
+<body>
+<header><a href="./client-portal.html">SAVANNAH AI LABELING · Return to client portal</a></header>
+<main>
+<section class="panel">
+<h1>Recover CVAT sample upload</h1>
+<p>The existing CVAT task <strong>2776290</strong> is present but has no image attached. This page attaches one sample image to that existing task. It does not create or delete tasks.</p>
+<div id="loginPanel">
+<h2 style="color:var(--green);font: bold 22px Georgia,serif">Administrator sign in</h2>
+<label for="email">Email</label><input id="email" type="email" autocomplete="username">
+<label for="password">Password</label><input id="password" type="password" autocomplete="current-password">
+<button id="signIn" type="button">Sign in</button>
+<div id="loginMessage" class="notice hidden"></div>
+</div>
+<div id="uploadPanel" class="hidden">
+<p class="notice">Safety check: the server will only proceed if CVAT confirms task 2776290 is still empty and belongs to the expected administrator account.</p>
+<label for="sampleImage">Choose the same sample image used for the original test</label>
+<input id="sampleImage" type="file" accept="image/jpeg,image/png,image/webp">
+<p class="hint">JPEG, PNG or WebP, maximum 20 MB. Do not select client data.</p>
+<button id="upload" type="button">Attach image to existing task 2776290</button>
+<button id="signOut" type="button" style="background:#fff;border:1px solid var(--gold)">Sign out</button>
+<div id="uploadMessage" class="notice hidden" role="status"></div>
+</div>
+</section>
+</main>
+<script type="module">
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.49.1';
+const supabase=createClient('https://vlbmtkkkpqaumdhysoby.supabase.co','sb_publishable_Dr98oLwQUvDSur611h0S3w_W-Xgw66L');
+const $=id=>document.getElementById(id);
+function show(id,text,type=''){const el=$(id);el.textContent=text;el.className='notice'+(type?' '+type:'');}
+function setSignedIn(ok){$('loginPanel').classList.toggle('hidden',ok);$('uploadPanel').classList.toggle('hidden',!ok);}
+const {data:{session}}=await supabase.auth.getSession();setSignedIn(!!session);
+$('signIn').addEventListener('click',async()=>{
+ $('signIn').disabled=true;
+ try{const {error}=await supabase.auth.signInWithPassword({email:$('email').value.trim(),password:$('password').value});if(error)throw error;setSignedIn(true);}
+ catch(e){show('loginMessage',e.message||'Sign in failed.','error');}
+ finally{$('signIn').disabled=false;}
+});
+$('signOut').addEventListener('click',async()=>{await supabase.auth.signOut();setSignedIn(false);});
+$('upload').addEventListener('click',async()=>{
+ const file=$('sampleImage').files?.[0];if(!file){show('uploadMessage','Choose the sample image first.','error');return;}
+ $('upload').disabled=true;show('uploadMessage','Checking the existing task and sending the image securely…');
+ try{
+  const form=new FormData();form.append('task_id','2776290');form.append('image',file,file.name);
+  const {data,error}=await supabase.functions.invoke('repair-cvat-task-upload',{body:form});
+  if(error)throw error;if(!data?.success)throw new Error(data?.error||'CVAT did not confirm the upload.');
+  show('uploadMessage',JSON.stringify(data,null,2)+'\n\nNext, return to the portal and check the task status.','success');
+ }catch(e){show('uploadMessage',e.message||'Upload recovery failed.','error');}
+ finally{$('upload').disabled=false;}
+});
+</script>
+</body>
+</html>
