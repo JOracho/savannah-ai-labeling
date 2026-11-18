@@ -426,7 +426,7 @@ $('annotationImportForm').addEventListener('submit',async(e)=>{
     const project=adminProjects.find(p=>p.id===projectId);
     if(!project)throw new Error('Choose a valid Savannah Supervisely project.');
     const externalProjectId=String(project.annotation_workspace_url||'').split('/projects/')[1]?.split('/')[0];
-    if(!externalProjectId||!/^\\d+$/.test(externalProjectId))throw new Error('The selected project does not have a valid Supervisely workspace link.');
+    if(!externalProjectId||!/^[0-9]+$/.test(externalProjectId))throw new Error('The selected project does not have a valid Supervisely workspace link.');
     const {data,error}=await supabase.functions.invoke('supervisely-annotation-review',{body:{
       action:'import',project_id:projectId,external_project_id:externalProjectId,
       external_dataset_id:$('annotationDatasetId').value.trim(),
