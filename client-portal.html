@@ -363,7 +363,7 @@ async function loadAdminPanel(){
  $('adminPanel').classList.remove('hidden');
  const select=$('adminProject');select.replaceChildren();
  const placeholder=document.createElement('option');placeholder.value='';placeholder.textContent='Loading projects…';select.append(placeholder);
- const {data,error}=await supabase.from('projects').select('id,project_code,title,client_user_id,annotation_tool,annotation_workspace_url').order('created_at',{ascending:false});
+ const {data,error}=await supabase.from('projects').select('id,project_code,title,client_user_id,service_type,description,annotation_tool,annotation_workspace_url,status,progress_percent,due_date,created_at').order('created_at',{ascending:false});
  if(error) throw error;
  adminProjects=data||[];
  const assignmentProject=$('assignmentProject');
@@ -482,9 +482,14 @@ async function showDashboard(user){
  if(isAdmin){try{await loadAdminPanel();}catch(e){message('adminMessage','Unable to load admin projects: '+e.message,'error');}}
  else {$('adminPanel').classList.add('hidden');}
  if(isAnnotator){await loadAnnotatorDashboard(user);return;}
- const {data:projects,error}=await supabase.from('projects').select('id,project_code,title,service_type,description,annotation_tool,annotation_workspace_url,status,progress_percent,due_date,created_at').eq('client_user_id',user.id).order('created_at',{ascending:false});
- if(error) throw error;
- const list=projects||[];
+ let list=[];
+ if(isAdmin){
+   list=adminProjects;
+ }else{
+   const {data:projects,error}=await supabase.from('projects').select('id,project_code,title,service_type,description,annotation_tool,annotation_workspace_url,status,progress_percent,due_date,created_at').eq('client_user_id',user.id).order('created_at',{ascending:false});
+   if(error) throw error;
+   list=projects||[];
+ }
  $('totalProjects').textContent=list.length;
  $('activeProjects').textContent=list.filter(p=>!['completed','delivered','on_hold'].includes(p.status)).length;
  $('completedProjects').textContent=list.filter(p=>['completed','delivered'].includes(p.status)).length;
