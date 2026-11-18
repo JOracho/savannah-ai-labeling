@@ -109,6 +109,12 @@ a{color:inherit}.topbar{background:var(--green);color:#fff;padding:14px 0}.wrap{
       <div id="assignmentMessage" class="notice hidden" role="status"></div>
       <p class="hint">Assignments grant portal visibility only. The annotator must also be invited into the relevant Supervisely, CVAT or client-owned workspace with their own account.</p>
     </section>
+    <section class="subpanel" style="margin-top:18px">
+      <h3 style="color:var(--green);font: bold 24px Georgia,serif;margin:0 0 6px">Assignment review</h3>
+      <p class="muted">Review work submitted by annotators. Approve completed work or request corrections.</p>
+      <div id="reviewMessage" class="notice hidden" role="status"></div>
+      <div id="reviewAssignments" class="project-list"><p class="muted">Loading submitted assignments…</p></div>
+    </section>
   </section>
   <section id="annotatorDashboard" class="hidden">
     <div class="stats" id="annotatorStats">
@@ -294,6 +300,32 @@ async function loadAnnotatorDashboard(user){
     root.append(card);
   }
 }
+async function loadReviewAssignments(){
+ const root=$('reviewAssignments');root.replaceChildren();
+ const {data,error}=await supabase.from('project_assignments').select('id,annotator_user_id,assignment_status,assigned_at,projects(title,project_code,service_type)').in('assignment_status',['submitted','review']).order('assigned_at',{ascending:false});
+ if(error)throw error;
+ const pending=data||[];
+ if(!pending.length){const empty=document.createElement('p');empty.className='muted';empty.textContent='No assignments are waiting for review.';root.append(empty);return;}
+ for(const item of pending){
+  const project=Array.isArray(item.projects)?item.projects[0]:item.projects;
+  const annotator=annotatorAccounts.find(a=>a.id===item.annotator_user_id);
+  const card=document.createElement('article');card.className='panel project';
+  const heading=document.createElement('h4');heading.style.margin='0';heading.style.color='var(--green)';heading.textContent=project?.title||'Annotation assignment';
+  const detail=document.createElement('p');detail.className='muted';detail.textContent=(annotator?.full_name?annotator.full_name+' · ':'')+(annotator?.email||'Annotator')+' · '+(project?.service_type||'Annotation')+' · '+item.assignment_status.replaceAll('_',' ');
+  const actions=document.createElement('div');actions.style.display='flex';actions.style.gap='10px';actions.style.flexWrap='wrap';
+  for(const choice of [{status:'approved',label:'Approve work'},{status:'rework',label:'Request rework'}]){
+   const button=document.createElement('button');button.type='button';button.className='btn'+(choice.status==='rework'?' secondary':'');button.textContent=choice.label;
+   button.addEventListener('click',async()=>{button.disabled=true;try{
+    const {data:result,error:invokeError}=await supabase.functions.invoke('manage-annotators',{body:{action:'review_assignment',assignment_id:item.id,assignment_status:choice.status}});
+    if(invokeError)throw invokeError;if(!result?.success)throw new Error(result?.error||'Unable to update this assignment.');
+    message('reviewMessage',result.message||'Review decision saved.','success');await loadReviewAssignments();
+   }catch(err){message('reviewMessage',err.message||'Unable to save the review decision.','error');button.disabled=false;}});
+   actions.append(button);
+  }
+  card.append(heading,detail,actions);root.append(card);
+ }
+}
+
 let currentPortalUser = null;
 $('createSuperviselyForm').addEventListener('submit', async (e) => {
   e.preventDefault();
@@ -340,6 +372,7 @@ async function loadAdminPanel(){
    const opt=document.createElement('option');opt.value='';opt.textContent='No projects available';assignmentProject.append(opt);
  }
  try{await loadAnnotatorAccounts();}catch(err){message('annotatorAdminMessage','Unable to load annotators: '+err.message,'error');}
+ try{await loadReviewAssignments();}catch(err){message('reviewMessage','Unable to load submitted assignments: '+err.message,'error');}
  const deliverableSelect=$('deliverableProject');
  deliverableSelect.replaceChildren();
  if(adminProjects.length){
