@@ -885,7 +885,13 @@ async function loadReviewerDashboard(user){
    const link=document.createElement('a');link.href=project.annotation_workspace_url;link.target='_blank';link.rel='noopener noreferrer';link.textContent='Open annotation workspace';card.append(link);
   }
   if(item.external_task_reference){const ref=document.createElement('p');ref.className='hint';ref.textContent='Task reference: '+item.external_task_reference;card.append(ref);}
-  const note=document.createElement('p');note.className='hint';note.textContent='Annotation previews appear here after the submission import is linked to this assignment. Use the workspace link to inspect the source task if needed.';card.append(note);
+  const preview=document.createElement('div');preview.style.marginTop='12px';preview.textContent='Loading linked annotation preview…';card.append(preview);
+   try{
+    const {data:pd,error:pe}=await supabase.functions.invoke('supervisely-annotation-review',{body:{action:'list_assignment_annotations',assignment_id:item.id}});
+    if(pe)throw pe;if(!pd?.success)throw new Error(pd?.error||'Preview unavailable.');preview.replaceChildren();const anns=pd.annotations||[];
+    if(!anns.length){const note=document.createElement('p');note.className='hint';note.textContent='No annotation imports are linked to this submitted assignment yet.';preview.append(note);}
+    for(const ann of anns){const cap=document.createElement('p');cap.className='hint';cap.textContent=(ann.image_name||'Image')+' · '+(ann.label_count||0)+' labels';const stage=document.createElement('div');stage.className='annotation-stage';const w=Number(ann.image_width)||Number(ann.annotation_json?.size?.width)||1;const ht=Number(ann.image_height)||Number(ann.annotation_json?.size?.height)||1;stage.style.aspectRatio=w+'/'+ht;const img=document.createElement('img');img.src=ann.image_url;img.alt=ann.image_name||'Submitted annotation';img.loading='lazy';img.addEventListener('load',()=>drawAnnotationOverlay(stage,img,ann.annotation_json||{},w,ht),{once:true});stage.append(img);preview.append(cap,stage);}
+   }catch(previewErr){preview.textContent='Preview unavailable: '+(previewErr.message||'Unable to load linked annotation.');}
   const actions=document.createElement('div');actions.style.display='flex';actions.style.gap='10px';actions.style.flexWrap='wrap';
   for(const choice of [{status:'approved',label:'Approve work'},{status:'rework',label:'Request rework'}]){
    const button=document.createElement('button');button.type='button';button.className='btn'+(choice.status==='rework'?' secondary':'');button.textContent=choice.label;
