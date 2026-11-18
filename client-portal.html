@@ -805,6 +805,16 @@ $('deliverableUploadForm').addEventListener('submit', async (e) => {
   }
 });
 async function showDashboard(user, forceRefresh=false){
+ const portalMode=new URLSearchParams(window.location.search).get('portal');
+ const userRole=user.app_metadata?.role||'client';
+ const expectedRoles={client:['client'],annotator:['annotator'],admin:['admin']};
+ if(portalMode && expectedRoles[portalMode] && !expectedRoles[portalMode].includes(userRole)){
+   currentPortalUser=null;
+   $('dashboard').classList.add('hidden');$('authPanel').classList.remove('hidden');
+   $('authIntro').textContent='This account does not have access to the '+portalMode+' portal. Sign in with an account assigned to that role.';
+   message('authMessage','Access denied. Your account role is '+userRole+'. Please use the correct Savannah portal.','error');
+   return;
+ }
  if(!forceRefresh && currentPortalUser?.id===user.id && !$('dashboard').classList.contains('hidden')) return;
  currentPortalUser = user;
  $('authPanel').classList.add('hidden'); $('dashboard').classList.remove('hidden');
