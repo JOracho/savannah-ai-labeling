@@ -77,6 +77,19 @@ a{color:inherit}.topbar{background:var(--green);color:#fff;padding:14px 0}.wrap{
       <button class="btn secondary" id="testCvatConnection" type="button">Test CVAT connection</button>
       <div id="cvatConnectionMessage" class="notice hidden" role="status" style="margin-top:12px"></div>
     </section>
+    <section class="subpanel" style="margin-top:18px">
+      <h3 style="color:var(--green);font: bold 22px Georgia,serif;margin:0 0 6px">Create a CVAT sample task</h3>
+      <p class="muted">Create a Savannah-managed CVAT task using one sample image. The image is sent securely from this page to CVAT through Savannah's server. Only JPEG, PNG or WebP files up to 20 MB are accepted. Do not use client data for this test.</p>
+      <form id="createCvatTaskForm">
+        <label for="cvatProject">Savannah test project</label>
+        <select id="cvatProject" required style="width:100%;padding:12px;border:1px solid #d7d9d2;border-radius:4px;font:inherit"></select>
+        <label for="cvatSampleImage">Sample image</label>
+        <input id="cvatSampleImage" type="file" accept="image/jpeg,image/png,image/webp" required>
+        <p class="hint">The first test task uses one label named “object”. You can change labels later when we configure the real annotation workflow.</p>
+        <button class="btn" id="createCvatTaskButton" type="submit">Create CVAT sample task</button>
+      </form>
+      <div id="createCvatTaskMessage" class="notice hidden" role="status"></div>
+    </section>
     <section class="subpanel" style="margin-top:22px">
       <h3 style="color:var(--green);font: bold 24px Georgia,serif;margin:0 0 6px">Upload completed deliverables</h3>
       <p class="muted">Upload completed annotation exports or project documents. The selected project's client will be able to access the files in their Deliverables section. Maximum file size: 100 MB.</p>
@@ -502,6 +515,84 @@ $('testCvatConnection').addEventListener('click', async () => {
   }
 });
 
+$('createCvatTaskForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const button = $('createCvatTaskButton');
+  const projectId = $('cvatProject').value;
+  const file = $('cvatSampleImage').files?.[0];
+  if (!projectId || !file) {
+    message('createCvatTaskMessage', 'Choose a test project and one sample image.', 'error');
+    return;
+  }
+  if (file.size > 20 * 1024 * 1024) {
+    message('createCvatTaskMessage', 'The sample image must be smaller than 20 MB.', 'error');
+    return;
+  }
+  button.disabled = true;
+  message('createCvatTaskMessage', 'Creating the CVAT task and uploading the sample image securely…');
+  try {
+    const form = new FormData();
+    form.append('project_id', projectId);
+    form.append('image', file, file.name);
+    const { data, error } = await supabase.functions.invoke('create-cvat-task', { body: form });
+    if (error) throw error;
+    if (!data?.success || !data?.task_url) throw new Error(data?.error || 'CVAT did not confirm task creation.');
+    const project = adminProjects.find(p => p.id === projectId);
+    if (project) {
+      project.annotation_tool = 'cvat';
+      project.annotation_workspace_url = data.task_url;
+    }
+    if ($('adminProject').value === projectId) fillWorkspaceFields();
+    $('cvatProject').value = '';
+    $('cvatSampleImage').value = '';
+    const link = document.createElement('a');
+    link.href = data.task_url;
+    link.target = '_blank';
+    link.rel = 'noopener noreferrer';
+    link.textContent = 'Open CVAT sample task ↗';
+    link.className = 'tool-link';
+    const output = $('createCvatTaskMessage');
+    output.textContent = 'Task created successfully (CVAT task ID: ' + data.task_id + '). ';
+    output.append(link);
+    output.className = 'notice success';
+    populateCvatProjectOptions();
+  } catch (err) {
+    message('createCvatTaskMessage', err.message || 'Unable to create the CVAT sample task.', 'error');
+  } finally {
+    button.disabled = false;
+  }
+});
+
+function populateCvatProjectOptions() {
+  const select = $('cvatProject');
+  select.replaceChildren();
+  const available = adminProjects.filter(p =>
+    (!p.annotation_tool || String(p.annotation_tool).toLowerCase() === 'cvat') &&
+    !p.annotation_workspace_url
+  );
+  if (!available.length) {
+    const option = document.createElement('option');
+    option.value = '';
+    option.textContent = 'No unassigned test projects available';
+    select.append(option);
+    select.disabled = true;
+    $('createCvatTaskButton').disabled = true;
+    return;
+  }
+  const placeholder = document.createElement('option');
+  placeholder.value = '';
+  placeholder.textContent = 'Choose a test project';
+  select.append(placeholder);
+  for (const p of available) {
+    const option = document.createElement('option');
+    option.value = p.id;
+    option.textContent = (p.project_code ? p.project_code + ' · ' : '') + p.title;
+    select.append(option);
+  }
+  select.disabled = false;
+  $('createCvatTaskButton').disabled = false;
+}
+
 async function loadAdminPanel(){
  $('adminPanel').classList.remove('hidden');
  const select=$('adminProject');select.replaceChildren();
@@ -509,6 +600,7 @@ async function loadAdminPanel(){
  const {data,error}=await supabase.from('projects').select('id,project_code,title,client_user_id,service_type,description,annotation_tool,annotation_workspace_url,status,progress_percent,due_date,created_at').order('created_at',{ascending:false});
  if(error) throw error;
  adminProjects=data||[];
+ populateCvatProjectOptions();
  const annotationProjectSelect=$('annotationReviewProject');
  annotationProjectSelect.replaceChildren();
  const superviselyProjects=adminProjects.filter(p=>String(p.annotation_tool||'').toLowerCase()==='supervisely'&&String(p.annotation_workspace_url||'').includes('/projects/'));
