@@ -150,6 +150,15 @@ a{color:inherit}.topbar{background:var(--green);color:#fff;padding:14px 0}.wrap{
       <div id="annotationImportMessage" class="notice hidden" role="status"></div>
       <div id="annotationPreviewList" class="project-list"><p class="muted">Choose a Supervisely project to load its imported annotations.</p></div>
     </section>
+    <section class="subpanel" style="margin-top:18px">
+      <h3 style="color:var(--green);font: bold 24px Georgia,serif;margin:0 0 6px">CVAT annotation review</h3>
+      <p class="muted">Import the saved sample annotation from CVAT Task #2776290 into Savannah's private review area. This reuses the existing task and image; it does not create another CVAT task.</p>
+      <p class="hint">Test project: Multi-Annotator Progress Test · CVAT Task #2776290 · Job #4744470</p>
+      <button class="btn" id="importCvatAnnotationButton" type="button">Import saved CVAT annotation</button>
+      <button class="btn secondary" id="refreshCvatAnnotationButton" type="button">Refresh CVAT preview</button>
+      <div id="cvatAnnotationReviewMessage" class="notice hidden" role="status"></div>
+      <div id="cvatAnnotationPreview" class="project-list"><p class="muted">Import the saved CVAT annotation to display it here.</p></div>
+    </section>
   </section>
   <section id="annotatorDashboard" class="hidden">
     <div class="stats" id="annotatorStats">
@@ -466,6 +475,71 @@ $('refreshAnnotationButton').addEventListener('click',async()=>{
 });
 $('annotationReviewProject').addEventListener('change',async()=>{
   try{await loadAnnotationReview();}catch(err){message('annotationImportMessage',err.message||'Unable to load annotation preview.','error');}
+});
+
+
+function drawCvatAnnotationOverlay(stage, annotation, width, height) {
+  const svg=svgNode('svg',{viewBox:'0 0 '+width+' '+height,preserveAspectRatio:'none','aria-label':'CVAT annotation overlay'});
+  const shapes=Array.isArray(annotation?.shapes)?annotation.shapes:[];
+  shapes.forEach((shape,index)=>{
+    const values=Array.isArray(shape?.points)?shape.points.map(Number):[];
+    if(values.length<4||values.some(v=>!Number.isFinite(v)))return;
+    const type=String(shape.type||'').toLowerCase();
+    const color='#C6A46A';
+    let node=null;
+    if(type==='rectangle'||type==='ellipse'){
+      const x1=Math.min(values[0],values[2]),y1=Math.min(values[1],values[3]);
+      const x2=Math.max(values[0],values[2]),y2=Math.max(values[1],values[3]);
+      node=type==='ellipse'
+        ?svgNode('ellipse',{cx:(x1+x2)/2,cy:(y1+y2)/2,rx:(x2-x1)/2,ry:(y2-y1)/2,fill:'rgba(198,164,106,.08)',stroke:color,'stroke-width':Math.max(2,width/500)})
+        :svgNode('rect',{x:x1,y:y1,width:x2-x1,height:y2-y1,fill:'rgba(198,164,106,.08)',stroke:color,'stroke-width':Math.max(2,width/500)});
+    }else if(['polygon','polyline','points'].includes(type)&&values.length>=6){
+      const coords=[];for(let i=0;i+1<values.length;i+=2)coords.push([values[i],values[i+1]]);
+      node=svgNode(type==='polyline'?'polyline':'polygon',{points:coords.map(p=>p.join(',')).join(' '),fill:type==='polyline'?'none':'rgba(198,164,106,.08)',stroke:color,'stroke-width':Math.max(2,width/500)});
+    }
+    if(!node)return;
+    svg.append(node);
+    const label='Label '+(shape.label_id??(index+1));
+    const x=values[0],y=values[1];
+    const text=svgNode('text',{x:x+4,y:Math.max(18,y-5),fill:'#183D2B','font-size':Math.max(14,width/65),'font-weight':'700','paint-order':'stroke','stroke':'#F7F5EF','stroke-width':Math.max(3,width/300),'stroke-linejoin':'round'});
+    text.textContent=label;svg.append(text);
+  });
+  stage.append(svg);
+}
+async function importCvatAnnotationPreview() {
+  const root=$('cvatAnnotationPreview');root.replaceChildren();
+  const {data,error}=await supabase.functions.invoke('cvat-annotation-review',{body:{}});
+  if(error)throw error;
+  if(!data?.success)throw new Error(data?.error||'Unable to import the saved CVAT annotation.');
+  const annotation=data.annotation_json||{};
+  const shapes=Array.isArray(annotation.shapes)?annotation.shapes:[];
+  const tags=Array.isArray(annotation.tags)?annotation.tags:[];
+  const tracks=Array.isArray(annotation.tracks)?annotation.tracks:[];
+  const card=document.createElement('article');card.className='annotation-preview-card';
+  const heading=document.createElement('h5');heading.textContent='strt.jpg · CVAT Task #'+data.task_id;
+  const detail=document.createElement('p');detail.className='muted';
+  detail.textContent=shapes.length+' shape(s) · '+tags.length+' tag(s) · '+tracks.length+' track(s) · Imported '+new Date(data.annotation_record.imported_at).toLocaleString();
+  const width=Number(data.annotation_record.image_width)||626;
+  const height=Number(data.annotation_record.image_height)||417;
+  const stage=document.createElement('div');stage.className='annotation-stage';stage.style.aspectRatio=width+'/'+height;
+  const img=document.createElement('img');img.src=data.image_url;img.alt='CVAT sample image with saved annotations';img.loading='lazy';
+  img.addEventListener('load',()=>drawCvatAnnotationOverlay(stage,annotation,width,height),{once:true});
+  stage.append(img);
+  card.append(heading,detail,stage);root.append(card);
+  message('cvatAnnotationReviewMessage',data.message+' '+shapes.length+' shape(s) imported.','success');
+}
+$('importCvatAnnotationButton').addEventListener('click',async()=>{
+  const button=$('importCvatAnnotationButton');button.disabled=true;
+  message('cvatAnnotationReviewMessage','Importing the saved annotation and sample image from CVAT…');
+  try{await importCvatAnnotationPreview();}
+  catch(err){message('cvatAnnotationReviewMessage',err.message||'CVAT annotation import failed.','error');}
+  finally{button.disabled=false;}
+});
+$('refreshCvatAnnotationButton').addEventListener('click',async()=>{
+  const button=$('refreshCvatAnnotationButton');button.disabled=true;
+  try{await importCvatAnnotationPreview();}
+  catch(err){message('cvatAnnotationReviewMessage',err.message||'Unable to refresh the CVAT preview.','error');}
+  finally{button.disabled=false;}
 });
 
 let currentPortalUser = null;
