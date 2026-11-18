@@ -307,9 +307,11 @@ async function loadReviewAssignments(){
  const pending=data||[];
  if(!pending.length){const empty=document.createElement('p');empty.className='muted';empty.textContent='No assignments are waiting for review.';root.append(empty);return;}
  for(const item of pending){
+  // Avoid duplicate cards if the admin dashboard triggers overlapping refreshes.
+  if(root.querySelector('[data-assignment-id="'+item.id+'"]'))continue;
   const project=Array.isArray(item.projects)?item.projects[0]:item.projects;
   const annotator=annotatorAccounts.find(a=>a.id===item.annotator_user_id);
-  const card=document.createElement('article');card.className='panel project';
+  const card=document.createElement('article');card.className='panel project';card.dataset.assignmentId=item.id;
   const heading=document.createElement('h4');heading.style.margin='0';heading.style.color='var(--green)';heading.textContent=project?.title||'Annotation assignment';
   const detail=document.createElement('p');detail.className='muted';detail.textContent=(annotator?.full_name?annotator.full_name+' · ':'')+(annotator?.email||'Annotator')+' · '+(project?.service_type||'Annotation')+' · '+item.assignment_status.replaceAll('_',' ');
   const actions=document.createElement('div');actions.style.display='flex';actions.style.gap='10px';actions.style.flexWrap='wrap';
