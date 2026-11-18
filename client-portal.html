@@ -440,29 +440,42 @@ async function loadAnnotatorDashboard(user){
 }
 async function loadReviewAssignments(){
  const root=$('reviewAssignments');root.replaceChildren();
- const {data,error}=await supabase.from('project_assignments').select('id,annotator_user_id,assignment_status,assigned_at,projects(title,project_code,service_type)').in('assignment_status',['submitted','review']).order('assigned_at',{ascending:false});
+ const {data,error}=await supabase.from('project_assignments').select('id,annotator_user_id,assignment_status,assigned_at,projects(title,project_code,service_type,tool_access_mode,external_tool_name)').in('assignment_status',['submitted','review']).order('assigned_at',{ascending:false});
  if(error)throw error;
  const pending=data||[];
+ const {data:byotData,error:byotError}=await supabase.functions.invoke('byot-submissions',{body:{action:'list_queue'}});
+ if(byotError)throw byotError;
+ const byotMap=new Map((byotData?.assignments||[]).map(x=>[x.id,x]));
  if(!pending.length){const empty=document.createElement('p');empty.className='muted';empty.textContent='No assignments are waiting for review.';root.append(empty);return;}
  for(const item of pending){
-  // Avoid duplicate cards if the admin dashboard triggers overlapping refreshes.
   if(root.querySelector('[data-assignment-id="'+item.id+'"]'))continue;
   const project=Array.isArray(item.projects)?item.projects[0]:item.projects;
+  const isByot=project?.tool_access_mode==='byot';
   const annotator=annotatorAccounts.find(a=>a.id===item.annotator_user_id);
   const card=document.createElement('article');card.className='panel project';card.dataset.assignmentId=item.id;
   const heading=document.createElement('h4');heading.style.margin='0';heading.style.color='var(--green)';heading.textContent=project?.title||'Annotation assignment';
-  const detail=document.createElement('p');detail.className='muted';detail.textContent=(annotator?.full_name?annotator.full_name+' · ':'')+(annotator?.email||'Annotator')+' · '+(project?.service_type||'Annotation')+' · '+item.assignment_status.replaceAll('_',' ');
+  const detail=document.createElement('p');detail.className='muted';detail.textContent=(annotator?.full_name?annotator.full_name+' · ':'')+(annotator?.email||'Annotator')+' · '+(project?.service_type||'Annotation')+' · '+(isByot?(project.external_tool_name||'Client-owned tool'):'Managed tool')+' · '+item.assignment_status.replaceAll('_',' ');
   const actions=document.createElement('div');actions.style.display='flex';actions.style.gap='10px';actions.style.flexWrap='wrap';
+  if(isByot){
+   const files=byotMap.get(item.id)?.submissions||[];
+   const fileBox=document.createElement('div');fileBox.className='subpanel';fileBox.style.marginTop='10px';
+   const fh=document.createElement('h4');fh.textContent='Submitted deliverables';fileBox.append(fh);
+   if(!files.length){const note=document.createElement('p');note.className='hint';note.textContent='No pending BYOT files were returned for this assignment.';fileBox.append(note);}
+   for(const file of files){const row=document.createElement('p');const link=document.createElement('a');link.href=file.download_url;link.target='_blank';link.rel='noopener noreferrer';link.textContent='Download '+file.file_name;row.append(link);const meta=document.createElement('small');meta.className='hint';meta.textContent=' · '+Math.max(1,Math.round(Number(file.file_size_bytes||0)/1024))+' KB';row.append(meta);fileBox.append(row);}
+   card.append(heading,detail,fileBox);
+  }else{card.append(heading,detail);}
   for(const choice of [{status:'approved',label:'Approve work'},{status:'rework',label:'Request rework'}]){
    const button=document.createElement('button');button.type='button';button.className='btn'+(choice.status==='rework'?' secondary':'');button.textContent=choice.label;
    button.addEventListener('click',async()=>{button.disabled=true;try{
-    const {data:result,error:invokeError}=await supabase.functions.invoke('manage-annotators',{body:{action:'review_assignment',assignment_id:item.id,assignment_status:choice.status}});
+    const target=isByot?'byot-submissions':'manage-annotators';
+    const body=isByot?{action:'review',assignment_id:item.id,assignment_status:choice.status}:{action:'review_assignment',assignment_id:item.id,assignment_status:choice.status};
+    const {data:result,error:invokeError}=await supabase.functions.invoke(target,{body});
     if(invokeError)throw invokeError;if(!result?.success)throw new Error(result?.error||'Unable to update this assignment.');
     message('reviewMessage',result.message||'Review decision saved.','success');await loadReviewAssignments();
    }catch(err){message('reviewMessage',err.message||'Unable to save the review decision.','error');button.disabled=false;}});
    actions.append(button);
   }
-  card.append(heading,detail,actions);root.append(card);
+  card.append(actions);root.append(card);
  }
 }
 
