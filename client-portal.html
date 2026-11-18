@@ -29,8 +29,8 @@ a{color:inherit}.topbar{background:var(--green);color:#fff;padding:14px 0}.wrap{
   <p class="hint">Use the email address associated with your Savannah AI Labeling client account. If you are new, create an account first.</p>
 </section>
 <section id="dashboard" class="hidden">
-  <div class="dashboard-head"><div><div class="eyebrow">Client dashboard</div><h2 id="welcomeTitle">Your projects</h2><p class="muted" id="welcomeEmail"></p></div><button class="btn secondary" id="signOut" type="button">Sign out</button></div>
-  <div class="stats"><div class="stat"><strong id="totalProjects">0</strong><span>Total projects</span></div><div class="stat"><strong id="activeProjects">0</strong><span>Active projects</span></div><div class="stat"><strong id="completedProjects">0</strong><span>Completed projects</span></div></div>
+  <div class="dashboard-head"><div><div class="eyebrow" id="dashboardEyebrow">Client dashboard</div><h2 id="welcomeTitle">Your projects</h2><p class="muted" id="welcomeEmail"></p></div><button class="btn secondary" id="signOut" type="button">Sign out</button></div>
+  <div class="stats" id="dashboardStats"><div class="stat"><strong id="totalProjects">0</strong><span>Total projects</span></div><div class="stat"><strong id="activeProjects">0</strong><span>Active projects</span></div><div class="stat"><strong id="completedProjects">0</strong><span>Completed projects</span></div></div>
   <div id="dashboardMessage" class="notice hidden" role="status"></div>
   <section id="adminPanel" class="panel hidden" style="margin-bottom:22px">
     <div class="eyebrow">Savannah administration</div>
@@ -87,6 +87,37 @@ a{color:inherit}.topbar{background:var(--green);color:#fff;padding:14px 0}.wrap{
       </form>
       <div id="deliverableUploadMessage" class="notice hidden" role="status"></div>
     </section>
+    <section class="subpanel" style="margin-top:18px">
+      <h3 style="color:var(--green);font: bold 24px Georgia,serif;margin:0 0 6px">Manage annotators</h3>
+      <p class="muted">Annotators first create a Savannah account using the sign-up tab. Enter their registered email below to activate annotator access. They must sign out and back in after activation.</p>
+      <form id="promoteAnnotatorForm">
+        <label for="annotatorEmail">Annotator account email</label>
+        <input id="annotatorEmail" type="email" required placeholder="annotator@example.com">
+        <button class="btn" id="promoteAnnotatorButton" type="submit">Activate annotator account</button>
+      </form>
+      <div id="annotatorAdminMessage" class="notice hidden" role="status"></div>
+      <h4 style="margin:18px 0 8px;color:var(--green)">Assign a project</h4>
+      <form id="assignAnnotatorForm">
+        <label for="assignmentProject">Client project</label>
+        <select id="assignmentProject" required style="width:100%;padding:12px;border:1px solid #d7d9d2;border-radius:4px;font:inherit"></select>
+        <label for="assignmentAnnotator">Annotator</label>
+        <select id="assignmentAnnotator" required style="width:100%;padding:12px;border:1px solid #d7d9d2;border-radius:4px;font:inherit"></select>
+        <label for="assignmentTaskReference">Task reference or task URL (optional)</label>
+        <input id="assignmentTaskReference" maxlength="500" placeholder="Task ID or direct task link inside the annotation tool">
+        <button class="btn" id="saveAnnotatorAssignment" type="submit">Assign annotator to project</button>
+      </form>
+      <div id="assignmentMessage" class="notice hidden" role="status"></div>
+      <p class="hint">Assignments grant portal visibility only. The annotator must also be invited into the relevant Supervisely, CVAT or client-owned workspace with their own account.</p>
+    </section>
+  </section>
+  <section id="annotatorDashboard" class="hidden">
+    <div class="stats" id="annotatorStats">
+      <div class="stat"><strong id="annotatorAssignedCount">0</strong><span>Assigned projects</span></div>
+      <div class="stat"><strong id="annotatorActiveCount">0</strong><span>In progress</span></div>
+      <div class="stat"><strong id="annotatorSubmittedCount">0</strong><span>Submitted for review</span></div>
+    </div>
+    <div id="annotatorMessage" class="notice hidden" role="status"></div>
+    <div id="annotatorAssignments" class="project-list"></div>
   </section>
   <div id="projects" class="project-list"></div>
 </section>
@@ -129,6 +160,118 @@ $('authForm').addEventListener('submit',async(e)=>{
 });
 function labelStatus(s){return ({project_submitted:'Project submitted',data_received:'Data received',data_verified:'Data verified',annotation_in_progress:'Annotation in progress',quality_assurance:'Quality assurance',client_review:'Client review',revision_required:'Revision required',completed:'Completed',delivered:'Delivered',on_hold:'On hold'})[s]||s;}
 let adminProjects=[];
+let annotatorAccounts=[];
+
+async function loadAnnotatorAccounts(){
+  const {data,error}=await supabase.functions.invoke('manage-annotators',{body:{action:'list'}});
+  if(error) throw error;
+  if(!data?.success) throw new Error(data?.error||'Unable to load annotator accounts.');
+  annotatorAccounts=data.annotators||[];
+  const select=$('assignmentAnnotator');
+  select.replaceChildren();
+  if(!annotatorAccounts.length){
+    const opt=document.createElement('option');opt.value='';opt.textContent='No active annotators yet';select.append(opt);
+    $('saveAnnotatorAssignment').disabled=true;
+    return;
+  }
+  $('saveAnnotatorAssignment').disabled=false;
+  for(const a of annotatorAccounts){
+    const opt=document.createElement('option');opt.value=a.id;
+    opt.textContent=(a.full_name?a.full_name+' · ':'')+a.email;select.append(opt);
+  }
+}
+
+$('promoteAnnotatorForm').addEventListener('submit',async(e)=>{
+  e.preventDefault();
+  const button=$('promoteAnnotatorButton');button.disabled=true;
+  try{
+    const {data,error}=await supabase.functions.invoke('manage-annotators',{body:{action:'promote',email:$('annotatorEmail').value.trim()}});
+    if(error)throw error;
+    if(!data?.success)throw new Error(data?.error||'Unable to activate this account.');
+    message('annotatorAdminMessage',data.message||'Annotator access activated. Ask the user to sign out and sign back in.','success');
+    $('annotatorEmail').value='';
+    await loadAnnotatorAccounts();
+  }catch(err){message('annotatorAdminMessage',err.message||'Unable to activate annotator access.','error');}
+  finally{button.disabled=false;}
+});
+
+$('assignAnnotatorForm').addEventListener('submit',async(e)=>{
+  e.preventDefault();
+  const button=$('saveAnnotatorAssignment');button.disabled=true;
+  try{
+    const project=adminProjects.find(p=>p.id===$('assignmentProject').value);
+    const annotator=annotatorAccounts.find(a=>a.id===$('assignmentAnnotator').value);
+    if(!project||!annotator)throw new Error('Choose a project and an active annotator.');
+    const platform=['supervisely','cvat'].includes((project.annotation_tool||'').toLowerCase())
+      ? project.annotation_tool.toLowerCase() : 'other';
+    const taskReference=$('assignmentTaskReference').value.trim();
+    const {error}=await supabase.from('project_assignments').upsert({
+      project_id:project.id,
+      annotator_user_id:annotator.id,
+      platform,
+      external_task_reference:taskReference||null,
+      assignment_status:'assigned'
+    },{onConflict:'project_id,annotator_user_id'});
+    if(error)throw error;
+    message('assignmentMessage','Annotator assigned successfully. Remember to invite their individual account into the annotation workspace as well.','success');
+    $('assignmentTaskReference').value='';
+  }catch(err){message('assignmentMessage',err.message||'Unable to assign this annotator.','error');}
+  finally{button.disabled=false;}
+});
+
+async function loadAnnotatorDashboard(user){
+  $('dashboardEyebrow').textContent='Annotator workspace';
+  $('welcomeTitle').textContent='My assignments';
+  $('dashboardStats').classList.add('hidden');
+  $('projects').classList.add('hidden');
+  $('adminPanel').classList.add('hidden');
+  $('annotatorDashboard').classList.remove('hidden');
+  const {data,error}=await supabase.from('project_assignments')
+    .select('id,platform,external_task_reference,assignment_status,assigned_at,projects(id,project_code,title,service_type,description,annotation_tool,annotation_workspace_url,due_date)')
+    .eq('annotator_user_id',user.id).order('assigned_at',{ascending:false});
+  if(error)throw error;
+  const assignments=data||[];
+  $('annotatorAssignedCount').textContent=assignments.length;
+  $('annotatorActiveCount').textContent=assignments.filter(a=>['accepted','in_progress','rework'].includes(a.assignment_status)).length;
+  $('annotatorSubmittedCount').textContent=assignments.filter(a=>['submitted','review','approved'].includes(a.assignment_status)).length;
+  const root=$('annotatorAssignments');root.replaceChildren();
+  if(!assignments.length){
+    const empty=document.createElement('article');empty.className='panel';
+    const h=document.createElement('h3');h.textContent='No assignments yet';h.style.color='var(--green)';
+    const p=document.createElement('p');p.className='muted';p.textContent='When Savannah assigns you to a project, it will appear here with its instructions and workspace access.';
+    empty.append(h,p);root.append(empty);return;
+  }
+  for(const assignment of assignments){
+    const project=Array.isArray(assignment.projects)?assignment.projects[0]:assignment.projects;
+    if(!project)continue;
+    const card=document.createElement('article');card.className='panel project';
+    const top=document.createElement('div');top.className='project-top';
+    const details=document.createElement('div');
+    const h=document.createElement('h3');h.textContent=project.title;h.style.color='var(--green)';
+    const meta=document.createElement('p');meta.className='muted';meta.textContent=(project.project_code?project.project_code+' · ':'')+(project.service_type||'Annotation project');
+    details.append(h,meta);
+    const status=document.createElement('span');status.className='pill';status.textContent=assignment.assignment_status.replaceAll('_',' ');
+    top.append(details,status);card.append(top);
+    const desc=document.createElement('p');desc.textContent=project.description||'Follow the project instructions provided by Savannah.';card.append(desc);
+    const info=document.createElement('p');info.className='muted';
+    info.textContent='Tool: '+(assignment.platform==='other'?'Client-provided tool':assignment.platform.toUpperCase())+
+      (project.due_date?' · Due: '+new Date(project.due_date+'T00:00:00').toLocaleDateString():'')+
+      (assignment.external_task_reference?' · Task: '+assignment.external_task_reference:'');
+    card.append(info);
+    const workspace=project.annotation_workspace_url;
+    if(workspace){
+      try{
+        const parsed=new URL(workspace);
+        if(parsed.protocol==='https:'){
+          const link=document.createElement('a');link.className='tool-link';link.href=parsed.href;link.target='_blank';link.rel='noopener noreferrer';link.textContent='Open annotation workspace ↗';card.append(link);
+        }
+      }catch(_){}
+    }else{
+      const note=document.createElement('p');note.className='hint';note.textContent='Workspace access is being configured. Contact your project manager.';card.append(note);
+    }
+    root.append(card);
+  }
+}
 let currentPortalUser = null;
 $('createSuperviselyForm').addEventListener('submit', async (e) => {
   e.preventDefault();
@@ -167,6 +310,14 @@ async function loadAdminPanel(){
  const {data,error}=await supabase.from('projects').select('id,project_code,title,client_user_id,annotation_tool,annotation_workspace_url').order('created_at',{ascending:false});
  if(error) throw error;
  adminProjects=data||[];
+ const assignmentProject=$('assignmentProject');
+ assignmentProject.replaceChildren();
+ if(adminProjects.length){
+   for(const p of adminProjects){const opt=document.createElement('option');opt.value=p.id;opt.textContent=(p.project_code?p.project_code+' · ':'')+p.title;assignmentProject.append(opt);}
+ }else{
+   const opt=document.createElement('option');opt.value='';opt.textContent='No projects available';assignmentProject.append(opt);
+ }
+ try{await loadAnnotatorAccounts();}catch(err){message('annotatorAdminMessage','Unable to load annotators: '+err.message,'error');}
  const deliverableSelect=$('deliverableProject');
  deliverableSelect.replaceChildren();
  if(adminProjects.length){
@@ -268,8 +419,12 @@ async function showDashboard(user){
  $('authPanel').classList.add('hidden'); $('dashboard').classList.remove('hidden');
  $('welcomeTitle').textContent='Your projects'; $('welcomeEmail').textContent=user.email||'';
  const isAdmin=user.app_metadata?.role==='admin';
+ const isAnnotator=user.app_metadata?.role==='annotator';
+ $('dashboardEyebrow').textContent=isAdmin?'Savannah administration':'Client dashboard';
+ $('dashboardStats').classList.remove('hidden');$('projects').classList.remove('hidden');$('annotatorDashboard').classList.add('hidden');
  if(isAdmin){try{await loadAdminPanel();}catch(e){message('adminMessage','Unable to load admin projects: '+e.message,'error');}}
  else {$('adminPanel').classList.add('hidden');}
+ if(isAnnotator){await loadAnnotatorDashboard(user);return;}
  const {data:projects,error}=await supabase.from('projects').select('id,project_code,title,service_type,description,annotation_tool,annotation_workspace_url,status,progress_percent,due_date,created_at').eq('client_user_id',user.id).order('created_at',{ascending:false});
  if(error) throw error;
  const list=projects||[];
