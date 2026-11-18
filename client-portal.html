@@ -55,20 +55,24 @@ a{color:inherit}.topbar{background:var(--green);color:#fff;padding:14px 0}.wrap{
       </form>
       <div id="createSuperviselyMessage" class="notice hidden" role="status"></div>
     </section>
-    <h3 style="color:var(--green);font: bold 24px Georgia,serif;margin:6px 0">Assign client annotation tools</h3>
-    <p class="muted">Choose a project, assign CVAT or Supervisely, and add its secure workspace URL. Only an administrator can see and use this panel.</p>
+    <h3 style="color:var(--green);font: bold 24px Georgia,serif;margin:6px 0">Configure the client's annotation tool</h3>
+    <p class="muted">Choose whether Savannah provides the workspace or the client uses their own platform. For client-owned tools, add the platform name and secure workspace link. Only administrators can change these settings.</p>
     <form id="workspaceForm">
       <label for="adminProject">Client project</label>
-      <select id="adminProject" required style="width:100%;padding:12px;border:1px solid #d7d9d2;border-radius:4px;font:inherit">
-        <option value="">Loading projects…</option>
+      <select id="adminProject" required style="width:100%;padding:12px;border:1px solid #d7d9d2;border-radius:4px;font:inherit"><option value="">Loading projects…</option></select>
+      <label for="adminAccessMode">Workspace ownership</label>
+      <select id="adminAccessMode" required style="width:100%;padding:12px;border:1px solid #d7d9d2;border-radius:4px;font:inherit">
+        <option value="managed">Savannah-managed workspace</option><option value="byot">Client-owned tool (BYOT)</option>
       </select>
-      <label for="adminTool">Annotation tool</label>
+      <label for="adminTool">Annotation platform</label>
       <select id="adminTool" required style="width:100%;padding:12px;border:1px solid #d7d9d2;border-radius:4px;font:inherit">
-        <option value="">Select a tool</option><option value="cvat">CVAT</option><option value="supervisely">Supervisely</option><option value="other">Other tool</option><option value="none">Not assigned yet</option>
+        <option value="">Select a platform</option><option value="cvat">CVAT</option><option value="supervisely">Supervisely</option><option value="other">Other platform</option><option value="none">Not assigned yet</option>
       </select>
+      <div id="externalToolNameField" class="hidden"><label for="externalToolName">Client's platform name</label><input id="externalToolName" maxlength="100" placeholder="e.g. Labelbox, V7, Roboflow"></div>
       <label for="adminWorkspaceUrl">Workspace URL (HTTPS)</label>
       <input id="adminWorkspaceUrl" type="url" placeholder="https://…" autocomplete="url">
-      <button class="btn" id="saveWorkspace" type="submit" style="margin-top:16px">Save workspace assignment</button>
+      <p class="hint">BYOT access is granted by the client in their own platform. Savannah will not ask for or store the client's platform password or API key.</p>
+      <button class="btn" id="saveWorkspace" type="submit" style="margin-top:16px">Save workspace settings</button>
     </form>
     <div id="adminMessage" class="notice hidden" role="status"></div>
     <section class="subpanel" style="margin-top:18px">
@@ -252,8 +256,9 @@ $('assignAnnotatorForm').addEventListener('submit',async(e)=>{
     const project=adminProjects.find(p=>p.id===$('assignmentProject').value);
     const annotator=annotatorAccounts.find(a=>a.id===$('assignmentAnnotator').value);
     if(!project||!annotator)throw new Error('Choose a project and an active annotator.');
-    const platform=['supervisely','cvat'].includes((project.annotation_tool||'').toLowerCase())
-      ? project.annotation_tool.toLowerCase() : 'other';
+    const platform=project.tool_access_mode==='byot'
+      ? (project.annotation_tool==='other'?'byot':project.annotation_tool||'byot')
+      : (['supervisely','cvat'].includes((project.annotation_tool||'').toLowerCase())?project.annotation_tool.toLowerCase():'other');
     const taskReference=$('assignmentTaskReference').value.trim();
     const {error}=await supabase.from('project_assignments').upsert({
       project_id:project.id,
@@ -671,7 +676,7 @@ async function loadAdminPanel(){
  $('adminPanel').classList.remove('hidden');
  const select=$('adminProject');select.replaceChildren();
  const placeholder=document.createElement('option');placeholder.value='';placeholder.textContent='Loading projects…';select.append(placeholder);
- const {data,error}=await supabase.from('projects').select('id,project_code,title,client_user_id,service_type,description,annotation_tool,annotation_workspace_url,status,progress_percent,due_date,created_at').order('created_at',{ascending:false});
+ const {data,error}=await supabase.from('projects').select('id,project_code,title,client_user_id,service_type,description,annotation_tool,annotation_workspace_url,tool_access_mode,external_tool_name,status,progress_percent,due_date,created_at').order('created_at',{ascending:false});
  if(error) throw error;
  adminProjects=data||[];
  populateCvatProjectOptions();
@@ -713,23 +718,31 @@ async function loadAdminPanel(){
 }
 function fillWorkspaceFields(){
  const p=adminProjects.find(x=>x.id===$('adminProject').value);if(!p)return;
+ $('adminAccessMode').value=p.tool_access_mode||'managed';
  $('adminTool').value=p.annotation_tool||'';
+ $('externalToolName').value=p.external_tool_name||'';
+ $('externalToolNameField').classList.toggle('hidden',$('adminTool').value!=='other');
  $('adminWorkspaceUrl').value=p.annotation_workspace_url||'';
  $('adminMessage').classList.add('hidden');
 }
+$('adminTool').addEventListener('change',()=>{$('externalToolNameField').classList.toggle('hidden',$('adminTool').value!=='other');});
 $('adminProject').addEventListener('change',fillWorkspaceFields);
 $('workspaceForm').addEventListener('submit',async(e)=>{
- e.preventDefault();const id=$('adminProject').value;const tool=$('adminTool').value;const rawUrl=$('adminWorkspaceUrl').value.trim();
- if(!id||!tool){message('adminMessage','Choose a project and an annotation tool.','error');return;}
+ e.preventDefault();const id=$('adminProject').value;const mode=$('adminAccessMode').value;const tool=$('adminTool').value;const rawUrl=$('adminWorkspaceUrl').value.trim();const customName=$('externalToolName').value.trim();
+ if(!id||!tool){message('adminMessage','Choose a project and an annotation platform.','error');return;}
+ if(tool==='other'&&!customName){message('adminMessage','Enter the name of the client’s annotation platform.','error');return;}
  let url=null;
  if(rawUrl){try{const parsed=new URL(rawUrl);if(parsed.protocol!=='https:')throw new Error();url=parsed.href;}catch(_){message('adminMessage','Enter a valid HTTPS workspace URL.','error');return;}}
+ if(mode==='byot'&&!url){message('adminMessage','Add the client-owned workspace URL before saving BYOT settings.','error');return;}
  $('saveWorkspace').disabled=true;
  try{
-  const {data,error}=await supabase.from('projects').update({annotation_tool:tool==='none'?null:tool,annotation_workspace_url:url}).eq('id',id).select('id,annotation_tool,annotation_workspace_url').maybeSingle();
+  const update={annotation_tool:tool==='none'?null:tool,annotation_workspace_url:url,tool_access_mode:mode,external_tool_name:tool==='other'?customName:null};
+  const {data,error}=await supabase.from('projects').update(update).eq('id',id).select('id,annotation_tool,annotation_workspace_url,tool_access_mode,external_tool_name').maybeSingle();
   if(error)throw error;if(!data)throw new Error('No project was updated. Confirm that this account has administrator access.');
-  const item=adminProjects.find(x=>x.id===id);if(item){item.annotation_tool=data.annotation_tool;item.annotation_workspace_url=data.annotation_workspace_url;}
-  message('adminMessage','Workspace assignment saved. The client will see the updated tool and link in their project dashboard.','success');
- }catch(err){message('adminMessage',err.message||'Unable to save the workspace assignment.','error');}
+  const item=adminProjects.find(x=>x.id===id);if(item)Object.assign(item,data);
+  message('adminMessage',mode==='byot'?'BYOT settings saved. The client will see their own platform and workspace link. They must invite each Savannah team member using an individual account.':'Savannah-managed workspace settings saved.','success');
+  if(currentPortalUser)await showDashboard(currentPortalUser,true);
+ }catch(err){message('adminMessage',err.message||'Unable to save the workspace settings.','error');}
  finally{$('saveWorkspace').disabled=false;}
 });
 $('deliverableUploadForm').addEventListener('submit', async (e) => {
@@ -828,8 +841,8 @@ async function showDashboard(user, forceRefresh=false){
    const toolHeading=document.createElement('h4');toolHeading.textContent='Your annotation workspace';
    const toolName=document.createElement('p');
    const toolKey=(p.annotation_tool||'').toLowerCase();
-   const toolLabels={cvat:'CVAT',supervisely:'Supervisely',other:'Assigned external tool'};
-   toolName.textContent=toolLabels[toolKey]||'No annotation tool assigned yet';
+   const toolLabels={cvat:'CVAT',supervisely:'Supervisely',other:p.external_tool_name||'External annotation tool'};
+   toolName.textContent=(p.tool_access_mode==='byot'?'Client-owned platform: ':'Savannah-managed platform: ')+(toolLabels[toolKey]||'No annotation tool assigned yet');
    toolBox.append(toolHeading,toolName);
    if(p.annotation_workspace_url){
      try{
@@ -839,7 +852,7 @@ async function showDashboard(user, forceRefresh=false){
        } else {const note=document.createElement('p');note.textContent='Workspace link is being checked by Savannah. Please contact your project manager for access.';toolBox.append(note);}
      }catch(_){const note=document.createElement('p');note.textContent='Workspace access is being prepared. Savannah will share the secure link when it is ready.';toolBox.append(note);}
    } else {
-     const note=document.createElement('p');note.textContent=toolKey?'Your '+(toolLabels[toolKey]||'annotation')+' workspace link will appear here once access has been configured.':'Savannah will assign the appropriate annotation tool for this project and share access here.';toolBox.append(note);
+     const note=document.createElement('p');note.textContent=p.tool_access_mode==='byot'?'Your client-owned workspace link is being configured. The client’s administrator must grant Savannah team members individual access.':(toolKey?'Your '+(toolLabels[toolKey]||'annotation')+' workspace link will appear here once access has been configured.':'Savannah will assign the appropriate annotation tool for this project and share access here.');toolBox.append(note);
    }
    card.append(toolBox);
    const cols=document.createElement('div');cols.className='project-grid';
