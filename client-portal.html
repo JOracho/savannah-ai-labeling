@@ -71,6 +71,12 @@ a{color:inherit}.topbar{background:var(--green);color:#fff;padding:14px 0}.wrap{
       <button class="btn" id="saveWorkspace" type="submit" style="margin-top:16px">Save workspace assignment</button>
     </form>
     <div id="adminMessage" class="notice hidden" role="status"></div>
+    <section class="subpanel" style="margin-top:18px">
+      <h3 style="color:var(--green);font: bold 22px Georgia,serif;margin:0 0 6px">CVAT connection</h3>
+      <p class="muted">Check that Savannah can securely connect to your CVAT workspace. This test only reads the task list and does not create or change CVAT tasks.</p>
+      <button class="btn secondary" id="testCvatConnection" type="button">Test CVAT connection</button>
+      <div id="cvatConnectionMessage" class="notice hidden" role="status" style="margin-top:12px"></div>
+    </section>
     <section class="subpanel" style="margin-top:22px">
       <h3 style="color:var(--green);font: bold 24px Georgia,serif;margin:0 0 6px">Upload completed deliverables</h3>
       <p class="muted">Upload completed annotation exports or project documents. The selected project's client will be able to access the files in their Deliverables section. Maximum file size: 100 MB.</p>
@@ -480,6 +486,22 @@ $('createSuperviselyForm').addEventListener('submit', async (e) => {
     button.disabled = false;
   }
 });
+$('testCvatConnection').addEventListener('click', async () => {
+  const button = $('testCvatConnection');
+  button.disabled = true;
+  $('cvatConnectionMessage').classList.add('hidden');
+  try {
+    const { data, error } = await supabase.functions.invoke('cvat-connection-test', { body: {} });
+    if (error) throw error;
+    if (!data?.success || !data?.connected) throw new Error(data?.error || 'CVAT connection could not be confirmed.');
+    message('cvatConnectionMessage', 'Connected successfully. CVAT currently contains ' + data.task_count + ' task(s). No tasks were changed.', 'success');
+  } catch (err) {
+    message('cvatConnectionMessage', err.message || 'Unable to connect to CVAT.', 'error');
+  } finally {
+    button.disabled = false;
+  }
+});
+
 async function loadAdminPanel(){
  $('adminPanel').classList.remove('hidden');
  const select=$('adminProject');select.replaceChildren();
