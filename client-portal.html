@@ -32,6 +32,13 @@ a{color:inherit}.topbar{background:var(--green);color:#fff;padding:14px 0}.wrap{
   <div class="dashboard-head"><div><div class="eyebrow" id="dashboardEyebrow">Client dashboard</div><h2 id="welcomeTitle">Your projects</h2><p class="muted" id="welcomeEmail"></p></div><button class="btn secondary" id="signOut" type="button">Sign out</button></div>
   <div class="stats" id="dashboardStats"><div class="stat"><strong id="totalProjects">0</strong><span>Total projects</span></div><div class="stat"><strong id="activeProjects">0</strong><span>Active projects</span></div><div class="stat"><strong id="completedProjects">0</strong><span>Completed projects</span></div></div>
   <div id="dashboardMessage" class="notice hidden" role="status"></div>
+  <section id="reviewerPanel" class="panel hidden" style="margin-bottom:22px">
+    <div class="eyebrow">Savannah quality assurance</div>
+    <h2 style="color:var(--green);font: bold 26px Georgia,serif;margin:8px 0">Reviewer workspace</h2>
+    <p class="muted">Review submitted annotation assignments, confirm completion, or return work for corrections. This role cannot change client projects, accounts, or integrations.</p>
+    <div id="reviewerMessage" class="notice hidden" role="status"></div>
+    <div id="reviewerQueue" class="project-list"><p class="muted">Loading submitted assignments…</p></div>
+  </section>
   <section id="adminPanel" class="panel hidden" style="margin-bottom:22px">
     <div class="eyebrow">Savannah administration</div>
     <section class="subpanel" style="margin:18px 0">
@@ -119,6 +126,14 @@ a{color:inherit}.topbar{background:var(--green);color:#fff;padding:14px 0}.wrap{
         <button class="btn" id="promoteAnnotatorButton" type="submit">Activate annotator account</button>
       </form>
       <div id="annotatorAdminMessage" class="notice hidden" role="status"></div>
+      <h4 style="margin:18px 0 8px;color:var(--green)">Activate a reviewer</h4>
+      <p class="muted">The reviewer must first create a Savannah account. Enter their registered email to grant review-only access.</p>
+      <form id="promoteReviewerForm">
+        <label for="reviewerEmail">Reviewer account email</label>
+        <input id="reviewerEmail" type="email" required placeholder="reviewer@example.com">
+        <button class="btn secondary" id="promoteReviewerButton" type="submit">Activate reviewer account</button>
+      </form>
+      <div id="reviewerAdminMessage" class="notice hidden" role="status"></div>
       <h4 style="margin:18px 0 8px;color:var(--green)">Assign a project</h4>
       <form id="assignAnnotatorForm">
         <label for="assignmentProject">Client project</label>
@@ -247,6 +262,19 @@ $('promoteAnnotatorForm').addEventListener('submit',async(e)=>{
     await loadAnnotatorAccounts();
   }catch(err){message('annotatorAdminMessage',err.message||'Unable to activate annotator access.','error');}
   finally{button.disabled=false;}
+});
+
+$('promoteReviewerForm').addEventListener('submit',async(e)=>{
+ e.preventDefault();
+ const button=$('promoteReviewerButton');button.disabled=true;
+ try{
+  const {data,error}=await supabase.functions.invoke('manage-annotators',{body:{action:'promote_reviewer',email:$('reviewerEmail').value.trim()}});
+  if(error)throw error;
+  if(!data?.success)throw new Error(data?.error||'Unable to activate this reviewer account.');
+  message('reviewerAdminMessage',data.message||'Reviewer access activated. Ask the user to sign out and back in.','success');
+  $('reviewerEmail').value='';
+ }catch(err){message('reviewerAdminMessage',err.message||'Unable to activate reviewer access.','error');}
+ finally{button.disabled=false;}
 });
 
 $('assignAnnotatorForm').addEventListener('submit',async(e)=>{
@@ -804,10 +832,58 @@ $('deliverableUploadForm').addEventListener('submit', async (e) => {
     button.disabled = false;
   }
 });
+async function loadReviewerDashboard(user){
+ $('dashboardEyebrow').textContent='Savannah reviewer portal';
+ $('welcomeTitle').textContent='Review submissions';
+ $('dashboardStats').classList.add('hidden');
+ $('projects').classList.add('hidden');
+ $('adminPanel').classList.add('hidden');
+ $('annotatorDashboard').classList.add('hidden');
+ $('reviewerPanel').classList.remove('hidden');
+ const root=$('reviewerQueue');root.replaceChildren();
+ const {data,error}=await supabase.functions.invoke('manage-annotators',{body:{action:'list_review_queue'}});
+ if(error)throw error;
+ if(!data?.success)throw new Error(data?.error||'Unable to load the review queue.');
+ const items=data.assignments||[];
+ $('totalProjects').textContent=items.length;
+ if(!items.length){const empty=document.createElement('p');empty.className='muted';empty.textContent='No submissions are waiting for review.';root.append(empty);return;}
+ for(const item of items){
+  const project=Array.isArray(item.projects)?item.projects[0]:item.projects;
+  const card=document.createElement('article');card.className='panel project';
+  const heading=document.createElement('h3');heading.style.color='var(--green)';heading.textContent=project?.title||'Annotation assignment';
+  const detail=document.createElement('p');detail.className='muted';
+  const person=item.annotator||{};
+  const tool=project?.tool_access_mode==='byot'?(project.external_tool_name||project.annotation_tool||'Client-owned tool'):(project?.annotation_tool||'Tool not specified');
+  detail.textContent=(person.full_name?person.full_name+' · ':'')+(person.email||'Annotator')+' · '+(project?.service_type||'Annotation')+' · '+tool+' · '+item.assignment_status.replaceAll('_',' ');
+  card.append(heading,detail);
+  if(project?.annotation_workspace_url){
+   const link=document.createElement('a');link.href=project.annotation_workspace_url;link.target='_blank';link.rel='noopener noreferrer';link.textContent='Open annotation workspace';card.append(link);
+  }
+  if(item.external_task_reference){const ref=document.createElement('p');ref.className='hint';ref.textContent='Task reference: '+item.external_task_reference;card.append(ref);}
+  const note=document.createElement('p');note.className='hint';note.textContent='Annotation previews appear here after the submission import is linked to this assignment. Use the workspace link to inspect the source task if needed.';card.append(note);
+  const actions=document.createElement('div');actions.style.display='flex';actions.style.gap='10px';actions.style.flexWrap='wrap';
+  for(const choice of [{status:'approved',label:'Approve work'},{status:'rework',label:'Request rework'}]){
+   const button=document.createElement('button');button.type='button';button.className='btn'+(choice.status==='rework'?' secondary':'');button.textContent=choice.label;
+   button.addEventListener('click',async()=>{
+    button.disabled=true;
+    try{
+     const {data:result,error:invokeError}=await supabase.functions.invoke('manage-annotators',{body:{action:'review_assignment',assignment_id:item.id,assignment_status:choice.status}});
+     if(invokeError)throw invokeError;
+     if(!result?.success)throw new Error(result?.error||'Unable to save the review decision.');
+     message('reviewerMessage',result.message||'Review decision saved.','success');
+     await loadReviewerDashboard(user);
+    }catch(err){message('reviewerMessage',err.message||'Unable to save the review decision.','error');button.disabled=false;}
+   });
+   actions.append(button);
+  }
+  card.append(actions);root.append(card);
+ }
+}
+
 async function showDashboard(user, forceRefresh=false){
  const portalMode=new URLSearchParams(window.location.search).get('portal');
  const userRole=user.app_metadata?.role||'client';
- const expectedRoles={client:['client'],annotator:['annotator'],admin:['admin']};
+ const expectedRoles={client:['client'],annotator:['annotator'],admin:['admin'],reviewer:['reviewer','admin']};
  if(portalMode && expectedRoles[portalMode] && !expectedRoles[portalMode].includes(userRole)){
    currentPortalUser=null;
    $('dashboard').classList.add('hidden');$('authPanel').classList.remove('hidden');
@@ -821,11 +897,14 @@ async function showDashboard(user, forceRefresh=false){
  $('welcomeTitle').textContent='Your projects'; $('welcomeEmail').textContent=user.email||'';
  const isAdmin=user.app_metadata?.role==='admin';
  const isAnnotator=user.app_metadata?.role==='annotator';
+ const isReviewer=user.app_metadata?.role==='reviewer';
+ $('reviewerPanel').classList.add('hidden');
  $('dashboardEyebrow').textContent=isAdmin?'Savannah administration':'Client dashboard';
  $('dashboardStats').classList.remove('hidden');$('projects').classList.remove('hidden');$('annotatorDashboard').classList.add('hidden');
  if(isAdmin){try{await loadAdminPanel();}catch(e){message('adminMessage','Unable to load admin projects: '+e.message,'error');}}
  else {$('adminPanel').classList.add('hidden');}
  if(isAnnotator){await loadAnnotatorDashboard(user);return;}
+ if(isReviewer && portalMode==='reviewer'){await loadReviewerDashboard(user);return;}
  let list=[];
  if(isAdmin){
    list=adminProjects;
