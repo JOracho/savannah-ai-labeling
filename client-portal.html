@@ -32,6 +32,7 @@ a{color:inherit}.topbar{background:var(--green);color:#fff;padding:14px 0}.wrap{
   <div class="dashboard-head"><div><div class="eyebrow" id="dashboardEyebrow">Client dashboard</div><h2 id="welcomeTitle">Your projects</h2><p class="muted" id="welcomeEmail"></p></div><button class="btn secondary" id="signOut" type="button">Sign out</button></div>
   <div class="stats" id="dashboardStats"><div class="stat"><strong id="totalProjects">0</strong><span>Total projects</span></div><div class="stat"><strong id="activeProjects">0</strong><span>Active projects</span></div><div class="stat"><strong id="completedProjects">0</strong><span>Completed projects</span></div></div>
   <div id="dashboardMessage" class="notice hidden" role="status"></div>
+  <section id="teamLeadPanel" class="panel hidden" style="margin-bottom:22px"><div class="eyebrow">Savannah operations</div><h2 style="color:var(--green);font: bold 26px Georgia,serif;margin:8px 0">Team lead workspace</h2><p class="muted">Only assignments explicitly allocated to your team lead account are shown here. This workspace does not provide client account or administrator controls.</p><div id="teamLeadMessage" class="notice hidden" role="status"></div><div id="teamLeadStats" class="stats"></div><div id="teamLeadAssignments" class="project-list"><p class="muted">Loading your team assignments…</p></div></section>
   <section id="reviewerPanel" class="panel hidden" style="margin-bottom:22px">
     <div class="eyebrow">Savannah quality assurance</div>
     <h2 style="color:var(--green);font: bold 26px Georgia,serif;margin:8px 0">Reviewer workspace</h2>
@@ -134,13 +135,15 @@ a{color:inherit}.topbar{background:var(--green);color:#fff;padding:14px 0}.wrap{
         <button class="btn secondary" id="promoteReviewerButton" type="submit">Activate reviewer account</button>
       </form>
       <div id="reviewerAdminMessage" class="notice hidden" role="status"></div>
-      <h4 style="margin:18px 0 8px;color:var(--green)">Assign a project</h4>
+      <h4 style="margin:18px 0 8px;color:var(--green)">Activate a team lead</h4><p class="muted">The team lead must first create a Savannah account. Enter their registered email to grant access to assignments allocated to them.</p><form id="promoteTeamLeadForm"><label for="teamLeadEmail">Team lead account email</label><input id="teamLeadEmail" type="email" required placeholder="teamlead@example.com"><button class="btn secondary" id="promoteTeamLeadButton" type="submit">Activate team lead account</button></form><div id="teamLeadAdminMessage" class="notice hidden" role="status"></div>
+       <h4 style="margin:18px 0 8px;color:var(--green)">Assign a project</h4>
       <form id="assignAnnotatorForm">
         <label for="assignmentProject">Client project</label>
         <select id="assignmentProject" required style="width:100%;padding:12px;border:1px solid #d7d9d2;border-radius:4px;font:inherit"></select>
         <label for="assignmentAnnotator">Annotator</label>
         <select id="assignmentAnnotator" required style="width:100%;padding:12px;border:1px solid #d7d9d2;border-radius:4px;font:inherit"></select>
-        <label for="assignmentTaskReference">Task reference or task URL (optional)</label>
+        <label for="assignmentTeamLead">Team lead (optional)</label><select id="assignmentTeamLead" style="width:100%;padding:12px;border:1px solid #d7d9d2;border-radius:4px;font:inherit"><option value="">Not allocated to a team lead</option></select>
+         <label for="assignmentTaskReference">Task reference or task URL (optional)</label>
         <input id="assignmentTaskReference" maxlength="500" placeholder="Task ID or direct task link inside the annotation tool">
         <button class="btn" id="saveAnnotatorAssignment" type="submit">Assign annotator to project</button>
       </form>
@@ -230,6 +233,7 @@ $('authForm').addEventListener('submit',async(e)=>{
 function labelStatus(s){return ({project_submitted:'Project submitted',data_received:'Data received',data_verified:'Data verified',annotation_in_progress:'Annotation in progress',quality_assurance:'Quality assurance',client_review:'Client review',revision_required:'Revision required',completed:'Completed',delivered:'Delivered',on_hold:'On hold'})[s]||s;}
 let adminProjects=[];
 let annotatorAccounts=[];
+let teamLeadAccounts=[];
 
 async function loadAnnotatorAccounts(){
   const {data,error}=await supabase.functions.invoke('manage-annotators',{body:{action:'list'}});
@@ -277,6 +281,13 @@ $('promoteReviewerForm').addEventListener('submit',async(e)=>{
  finally{button.disabled=false;}
 });
 
+
+$('promoteTeamLeadForm').addEventListener('submit',async(e)=>{
+ e.preventDefault();const button=$('promoteTeamLeadButton');button.disabled=true;
+ try{const {data,error}=await supabase.functions.invoke('manage-annotators',{body:{action:'promote_team_lead',email:$('teamLeadEmail').value.trim()}});if(error)throw error;if(!data?.success)throw new Error(data?.error||'Unable to activate team lead.');message('teamLeadAdminMessage',data.message||'Team lead access activated.','success');$('teamLeadEmail').value='';const {data:tl,error:tle}=await supabase.functions.invoke('manage-annotators',{body:{action:'list_team_leads'}});if(tle)throw tle;teamLeadAccounts=tl.team_leads||[];const ts=$('assignmentTeamLead');ts.replaceChildren();const none=document.createElement('option');none.value='';none.textContent='Not allocated to a team lead';ts.append(none);for(const lead of teamLeadAccounts){const o=document.createElement('option');o.value=lead.id;o.textContent=(lead.full_name?lead.full_name+' · ':'')+lead.email;ts.append(o);}}
+ catch(err){message('teamLeadAdminMessage',err.message||'Unable to activate team lead.','error');}finally{button.disabled=false;}
+});
+
 $('assignAnnotatorForm').addEventListener('submit',async(e)=>{
   e.preventDefault();
   const button=$('saveAnnotatorAssignment');button.disabled=true;
@@ -293,6 +304,7 @@ $('assignAnnotatorForm').addEventListener('submit',async(e)=>{
       annotator_user_id:annotator.id,
       platform,
       external_task_reference:taskReference||null,
+      team_lead_user_id:$('assignmentTeamLead').value||null,
       assignment_status:'assigned'
     },{onConflict:'project_id,annotator_user_id'});
     if(error)throw error;
@@ -832,6 +844,19 @@ $('deliverableUploadForm').addEventListener('submit', async (e) => {
     button.disabled = false;
   }
 });
+
+async function loadTeamLeadDashboard(user){
+ $('dashboardEyebrow').textContent='Savannah team lead portal';$('welcomeTitle').textContent='My allocated workload';
+ $('dashboardStats').classList.add('hidden');$('projects').classList.add('hidden');$('adminPanel').classList.add('hidden');$('annotatorDashboard').classList.add('hidden');$('reviewerPanel').classList.add('hidden');$('teamLeadPanel').classList.remove('hidden');
+ const root=$('teamLeadAssignments');root.replaceChildren();
+ const {data,error}=await supabase.functions.invoke('manage-annotators',{body:{action:'list_team_workload'}});if(error)throw error;if(!data?.success)throw new Error(data?.error||'Unable to load team workload.');
+ const items=data.assignments||[],counts=data.counts||{};
+ const stats=$('teamLeadStats');stats.replaceChildren();
+ for(const [label,key] of [['Allocated','total'],['In progress','in_progress'],['Submitted','submitted'],['Approved','approved'],['Needs rework','rework']]){const box=document.createElement('div');box.className='stat';const strong=document.createElement('strong');strong.textContent=counts[key]||0;const span=document.createElement('span');span.textContent=label;box.append(strong,span);stats.append(box);}
+ if(!items.length){const empty=document.createElement('p');empty.className='muted';empty.textContent='No assignments have been allocated to your team lead account yet. Ask an administrator to allocate assignments.';root.append(empty);return;}
+ for(const item of items){const project=Array.isArray(item.projects)?item.projects[0]:item.projects;const card=document.createElement('article');card.className='panel project';const title=document.createElement('h3');title.style.color='var(--green)';title.textContent=project?.title||'Annotation assignment';const detail=document.createElement('p');detail.className='muted';detail.textContent=(item.annotator?.full_name||item.annotator?.email||'Annotator')+' · '+(project?.service_type||'Annotation')+' · '+String(item.assignment_status||'').replaceAll('_',' ');card.append(title,detail);if(item.external_task_reference){const ref=document.createElement('p');ref.className='hint';ref.textContent='Task reference: '+item.external_task_reference;card.append(ref);}if(project?.annotation_workspace_url){const link=document.createElement('a');link.href=project.annotation_workspace_url;link.target='_blank';link.rel='noopener noreferrer';link.textContent='Open annotation workspace';card.append(link);}root.append(card);}
+}
+
 async function loadReviewerDashboard(user){
  $('dashboardEyebrow').textContent='Savannah reviewer portal';
  $('welcomeTitle').textContent='Review submissions';
@@ -883,7 +908,7 @@ async function loadReviewerDashboard(user){
 async function showDashboard(user, forceRefresh=false){
  const portalMode=new URLSearchParams(window.location.search).get('portal');
  const userRole=user.app_metadata?.role||'client';
- const expectedRoles={client:['client'],annotator:['annotator'],admin:['admin'],reviewer:['reviewer','admin']};
+ const expectedRoles={client:['client'],annotator:['annotator'],admin:['admin'],reviewer:['reviewer','admin'],teamlead:['team_lead']};
  if(portalMode && expectedRoles[portalMode] && !expectedRoles[portalMode].includes(userRole)){
    currentPortalUser=null;
    $('dashboard').classList.add('hidden');$('authPanel').classList.remove('hidden');
