@@ -996,13 +996,16 @@ async function showDashboard(user, forceRefresh=false){
  const isAdmin=user.app_metadata?.role==='admin';
  const isAnnotator=user.app_metadata?.role==='annotator';
  const isReviewer=user.app_metadata?.role==='reviewer';
+ const isTeamLead=user.app_metadata?.role==='team_lead';
  $('reviewerPanel').classList.add('hidden');
+ $('teamLeadPanel').classList.add('hidden');
  $('dashboardEyebrow').textContent=isAdmin?'Savannah administration':'Client dashboard';
  $('dashboardStats').classList.remove('hidden');$('projects').classList.remove('hidden');$('annotatorDashboard').classList.add('hidden');
+ if(isAnnotator){await loadAnnotatorDashboard(user);return;}
+ if(isReviewer){await loadReviewerDashboard(user);return;}
+ if(isTeamLead){await loadTeamLeadDashboard(user);return;}
  if(isAdmin){try{await loadAdminPanel();}catch(e){message('adminMessage','Unable to load admin projects: '+e.message,'error');}}
  else {$('adminPanel').classList.add('hidden');}
- if(isAnnotator){await loadAnnotatorDashboard(user);return;}
- if(isReviewer && portalMode==='reviewer'){await loadReviewerDashboard(user);return;}
  let list=[];
  if(isAdmin){
    list=adminProjects;
