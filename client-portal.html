@@ -264,6 +264,21 @@ async function loadAnnotatorDashboard(user){
       (project.due_date?' · Due: '+new Date(project.due_date+'T00:00:00').toLocaleDateString():'')+
       (assignment.external_task_reference?' · Task: '+assignment.external_task_reference:'');
     card.append(info);
+    const taskReference=(assignment.external_task_reference||'').trim();
+    if(taskReference){
+      try{
+        const taskUrl=new URL(taskReference);
+        if(taskUrl.protocol==='https:'){
+          const taskLink=document.createElement('a');taskLink.className='tool-link';taskLink.style.marginRight='8px';
+          taskLink.href=taskUrl.href;taskLink.target='_blank';taskLink.rel='noopener noreferrer';
+          taskLink.textContent='Open assigned task ↗';card.append(taskLink);
+        }else{
+          const taskNote=document.createElement('p');taskNote.className='hint';taskNote.textContent='Task reference: '+taskReference;card.append(taskNote);
+        }
+      }catch(_){
+        const taskNote=document.createElement('p');taskNote.className='hint';taskNote.textContent='Task reference: '+taskReference;card.append(taskNote);
+      }
+    }
     const workspace=project.annotation_workspace_url;
     if(workspace){
       try{
