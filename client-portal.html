@@ -269,6 +269,28 @@ async function loadAnnotatorDashboard(user){
     }else{
       const note=document.createElement('p');note.className='hint';note.textContent='Workspace access is being configured. Contact your project manager.';card.append(note);
     }
+    let nextStatus=null, actionLabel='';
+    if(assignment.assignment_status==='assigned'){nextStatus='accepted';actionLabel='Accept assignment';}
+    else if(assignment.assignment_status==='accepted'){nextStatus='in_progress';actionLabel='Start work';}
+    else if(['in_progress','rework'].includes(assignment.assignment_status)){nextStatus='submitted';actionLabel='Submit for review';}
+    if(nextStatus){
+      const actionButton=document.createElement('button');
+      actionButton.type='button';actionButton.className='btn secondary';actionButton.style.marginTop='14px';
+      actionButton.textContent=actionLabel;
+      actionButton.addEventListener('click',async()=>{
+        actionButton.disabled=true;
+        try{
+          const {data,error}=await supabase.functions.invoke('manage-annotators',{body:{
+            action:'update_status',assignment_id:assignment.id,assignment_status:nextStatus
+          }});
+          if(error)throw error;
+          if(!data?.success)throw new Error(data?.error||'Unable to update assignment status.');
+          message('annotatorMessage','Assignment updated: '+nextStatus.replaceAll('_',' ')+'.','success');
+          await loadAnnotatorDashboard(user);
+        }catch(err){message('annotatorMessage',err.message||'Unable to update assignment status.','error');actionButton.disabled=false;}
+      });
+      card.append(actionButton);
+    }
     root.append(card);
   }
 }
