@@ -37,6 +37,12 @@ button:disabled{opacity:.55;cursor:not-allowed}.notice{padding:13px 15px;border-
 <button id="signOut" type="button" style="background:#fff;border:1px solid var(--gold)">Sign out</button>
 <div id="uploadMessage" class="notice hidden" role="status"></div>
 </div>
+<div id="reviewPanel" class="hidden" style="border-top:1px solid #e7e3d8;margin-top:24px;padding-top:18px">
+<h2 style="color:var(--green);font: bold 22px Georgia,serif">Import saved annotation into Savannah</h2>
+<p>This reads the saved annotation and source image from CVAT task 2776290 and imports them into the linked Savannah project <strong>Multi-Annotator Progress Test</strong>. It does not change or delete the CVAT task.</p>
+<button id="importReview" type="button">Import CVAT annotation for review</button>
+<div id="reviewMessage" class="notice hidden" role="status"></div>
+</div>
 </section>
 </main>
 <script type="module">
@@ -44,7 +50,7 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.49.1';
 const supabase=createClient('https://vlbmtkkkpqaumdhysoby.supabase.co','sb_publishable_Dr98oLwQUvDSur611h0S3w_W-Xgw66L');
 const $=id=>document.getElementById(id);
 function show(id,text,type=''){const el=$(id);el.textContent=text;el.className='notice'+(type?' '+type:'');}
-function setSignedIn(ok){$('loginPanel').classList.toggle('hidden',ok);$('uploadPanel').classList.toggle('hidden',!ok);}
+function setSignedIn(ok){$('loginPanel').classList.toggle('hidden',ok);$('uploadPanel').classList.toggle('hidden',!ok);$('reviewPanel').classList.toggle('hidden',!ok);}
 const {data:{session}}=await supabase.auth.getSession();setSignedIn(!!session);
 $('signIn').addEventListener('click',async()=>{
  $('signIn').disabled=true;
@@ -63,6 +69,15 @@ $('upload').addEventListener('click',async()=>{
   show('uploadMessage',JSON.stringify(data,null,2)+'\n\nNext, return to the portal and check the task status.','success');
  }catch(e){show('uploadMessage',e.message||'Upload recovery failed.','error');}
  finally{$('upload').disabled=false;}
+});
+$('importReview').addEventListener('click',async()=>{
+ $('importReview').disabled=true;show('reviewMessage','Reading the saved CVAT annotation and importing it into Savannah…');
+ try{
+  const {data,error}=await supabase.functions.invoke('cvat-annotation-review',{body:{}});
+  if(error)throw error;if(!data?.success)throw new Error(data?.error||'Savannah did not confirm the import.');
+  show('reviewMessage',JSON.stringify(data,null,2)+'\\n\\nThe annotation is now stored in Savannah for administrator review.','success');
+ }catch(e){show('reviewMessage',e.message||'Annotation import failed.','error');}
+ finally{$('importReview').disabled=false;}
 });
 </script>
 </body>
