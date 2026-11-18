@@ -382,7 +382,7 @@ async function loadAnnotatorDashboard(user){
     let nextStatus=null, actionLabel='';
     if(assignment.assignment_status==='assigned'){nextStatus='accepted';actionLabel='Accept assignment';}
     else if(assignment.assignment_status==='accepted'){nextStatus='in_progress';actionLabel='Start work';}
-    else if(['in_progress','rework'].includes(assignment.assignment_status)){nextStatus='submitted';actionLabel='Submit for review';}
+    // Submission is handled by the verified annotation-import workflow, never by a status-only button.
     if(nextStatus){
       const actionButton=document.createElement('button');
       actionButton.type='button';actionButton.className='btn secondary';actionButton.style.marginTop='14px';
@@ -401,7 +401,7 @@ async function loadAnnotatorDashboard(user){
       });
       card.append(actionButton);
     }
-    if(['accepted','in_progress','rework'].includes(assignment.assignment_status) && String(assignment.platform||'').toLowerCase()==='supervisely' && String(project.annotation_tool||'').toLowerCase()==='supervisely' && project.tool_access_mode!=='byot'){
+    if(['in_progress','rework'].includes(assignment.assignment_status) && String(assignment.platform||'').toLowerCase()==='supervisely' && String(project.annotation_tool||'').toLowerCase()==='supervisely' && project.tool_access_mode!=='byot'){
       const submitBox=document.createElement('div');submitBox.className='subpanel';submitBox.style.marginTop='14px';
       const title=document.createElement('h4');title.textContent='Submit completed Supervisely work';title.style.color='var(--green)';submitBox.append(title);
       const help=document.createElement('p');help.className='hint';help.textContent='After saving your labels in Supervisely, enter the dataset ID and image ID for the completed image. Savannah imports the annotation and sends this assignment to review.';submitBox.append(help);
