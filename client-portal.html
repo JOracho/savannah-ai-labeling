@@ -820,7 +820,7 @@ async function showDashboard(user, forceRefresh=false){
  if(isAdmin){
    list=adminProjects;
  }else{
-   const {data:projects,error}=await supabase.from('projects').select('id,project_code,title,service_type,description,annotation_tool,annotation_workspace_url,status,progress_percent,due_date,created_at').eq('client_user_id',user.id).order('created_at',{ascending:false});
+   const {data:projects,error}=await supabase.from('projects').select('id,project_code,title,service_type,description,annotation_tool,annotation_workspace_url,tool_access_mode,external_tool_name,status,progress_percent,due_date,created_at').eq('client_user_id',user.id).order('created_at',{ascending:false});
    if(error) throw error;
    list=projects||[];
  }
