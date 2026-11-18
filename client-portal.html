@@ -148,7 +148,7 @@ a{color:inherit}.topbar{background:var(--green);color:#fff;padding:14px 0}.wrap{
         <button class="btn" id="saveAnnotatorAssignment" type="submit">Assign annotator to project</button>
       </form>
       <div id="assignmentMessage" class="notice hidden" role="status"></div>
-      <p class="hint">Assignments grant portal visibility only. The annotator must also be invited into the relevant Supervisely, CVAT or client-owned workspace with their own account.</p>
+      <p class="hint">Workload policy: each annotator can have one active project at a time. A new project can be allocated after the current work is submitted. Submitted work may remain with the reviewer while the annotator receives another batch. Assignments grant portal visibility only; invite the annotator's individual account into the relevant annotation workspace.</p>
     </section>
     <section class="subpanel" style="margin-top:18px">
       <h3 style="color:var(--green);font: bold 24px Georgia,serif;margin:0 0 6px">Assignment review</h3>
@@ -310,7 +310,13 @@ $('assignAnnotatorForm').addEventListener('submit',async(e)=>{
     if(error)throw error;
     message('assignmentMessage','Annotator assigned successfully. Remember to invite their individual account into the annotation workspace as well.','success');
     $('assignmentTaskReference').value='';
-  }catch(err){message('assignmentMessage',err.message||'Unable to assign this annotator.','error');}
+  }catch(err){
+    const raw=String(err.message||'');
+    const friendly=raw.includes('project_assignments_one_active_per_annotator_idx')
+      ? 'This annotator already has an active project. Wait until they submit it before assigning another project.'
+      : raw;
+    message('assignmentMessage',friendly||'Unable to assign this annotator.','error');
+  }
   finally{button.disabled=false;}
 });
 
@@ -893,15 +899,81 @@ $('deliverableUploadForm').addEventListener('submit', async (e) => {
 });
 
 async function loadTeamLeadDashboard(user){
- $('dashboardEyebrow').textContent='Savannah team lead portal';$('welcomeTitle').textContent='My allocated workload';
+ $('dashboardEyebrow').textContent='Savannah team lead portal';
+ $('welcomeTitle').textContent='Team production dashboard';
  $('dashboardStats').classList.add('hidden');$('projects').classList.add('hidden');$('adminPanel').classList.add('hidden');$('annotatorDashboard').classList.add('hidden');$('reviewerPanel').classList.add('hidden');$('teamLeadPanel').classList.remove('hidden');
  const root=$('teamLeadAssignments');root.replaceChildren();
- const {data,error}=await supabase.functions.invoke('manage-annotators',{body:{action:'list_team_workload'}});if(error)throw error;if(!data?.success)throw new Error(data?.error||'Unable to load team workload.');
+ const {data,error}=await supabase.functions.invoke('manage-annotators',{body:{action:'list_team_workload'}});
+ if(error)throw error;
+ if(!data?.success)throw new Error(data?.error||'Unable to load team workload.');
  const items=data.assignments||[],counts=data.counts||{};
  const stats=$('teamLeadStats');stats.replaceChildren();
- for(const [label,key] of [['Allocated','total'],['In progress','in_progress'],['Submitted','submitted'],['Approved','approved'],['Needs rework','rework']]){const box=document.createElement('div');box.className='stat';const strong=document.createElement('strong');strong.textContent=counts[key]||0;const span=document.createElement('span');span.textContent=label;box.append(strong,span);stats.append(box);}
- if(!items.length){const empty=document.createElement('p');empty.className='muted';empty.textContent='No assignments have been allocated to your team lead account yet. Ask an administrator to allocate assignments.';root.append(empty);return;}
- for(const item of items){const project=Array.isArray(item.projects)?item.projects[0]:item.projects;const card=document.createElement('article');card.className='panel project';const title=document.createElement('h3');title.style.color='var(--green)';title.textContent=project?.title||'Annotation assignment';const detail=document.createElement('p');detail.className='muted';detail.textContent=(item.annotator?.full_name||item.annotator?.email||'Annotator')+' · '+(project?.service_type||'Annotation')+' · '+String(item.assignment_status||'').replaceAll('_',' ');card.append(title,detail);if(item.external_task_reference){const ref=document.createElement('p');ref.className='hint';ref.textContent='Task reference: '+item.external_task_reference;card.append(ref);}if(project?.annotation_workspace_url){const link=document.createElement('a');link.href=project.annotation_workspace_url;link.target='_blank';link.rel='noopener noreferrer';link.textContent='Open annotation workspace';card.append(link);}root.append(card);}
+ for(const [label,value] of [
+  ['Assigned workload',counts.total||0],
+  ['Active annotators',counts.active_annotators||0],
+  ['Awaiting start',counts.assigned||0],
+  ['In progress',counts.in_progress||0],
+  ['Submitted for review',counts.submitted||0],
+  ['Approved',counts.approved||0],
+  ['Needs rework',counts.rework||0]
+ ]){
+  const box=document.createElement('div');box.className='stat';
+  const strong=document.createElement('strong');strong.textContent=String(value);
+  const span=document.createElement('span');span.textContent=label;
+  box.append(strong,span);stats.append(box);
+ }
+ const policy=document.createElement('div');policy.className='notice';
+ policy.textContent='Workload rule: each annotator may have only one active project at a time. Active work includes assigned, accepted, in-progress and rework assignments. Submitted work is waiting for independent review and does not count as active annotator work.';
+ root.append(policy);
+ if(!items.length){
+  const empty=document.createElement('p');empty.className='muted';
+  empty.textContent='No assignments have been allocated to your team lead account yet. Ask an administrator to allocate assignments.';
+  root.append(empty);return;
+ }
+ const activeStates=['assigned','accepted','in_progress','rework'];
+ const byAnnotator=new Map();
+ for(const item of items){
+  const key=item.annotator_user_id||'unknown';
+  if(!byAnnotator.has(key))byAnnotator.set(key,[]);
+  byAnnotator.get(key).push(item);
+ }
+ const teamSummary=document.createElement('p');teamSummary.className='muted';
+ teamSummary.textContent=byAnnotator.size+' annotator(s) represented in your allocated workload.';
+ root.append(teamSummary);
+ for(const [annotatorId,assignments] of byAnnotator){
+  const person=assignments[0].annotator||{};
+  const group=document.createElement('section');group.className='subpanel';
+  group.style.marginBottom='14px';
+  const heading=document.createElement('h3');heading.style.color='var(--green)';
+  heading.textContent=person.full_name||person.email||'Assigned annotator';
+  const email=document.createElement('p');email.className='hint';email.textContent=person.email||'';
+  const activeCount=assignments.filter(a=>activeStates.includes(a.assignment_status)).length;
+  const workload=document.createElement('p');workload.className='muted';
+  workload.textContent=activeCount===0?'No active project currently.':activeCount===1?'1 active project.':'Warning: '+activeCount+' active projects. Please notify Savannah administration.';
+  group.append(heading,email,workload);
+  for(const item of assignments){
+   const project=Array.isArray(item.projects)?item.projects[0]:item.projects;
+   const card=document.createElement('article');card.className='panel project';card.style.marginTop='10px';
+   const title=document.createElement('h4');title.style.color='var(--green)';title.textContent=project?.title||'Annotation assignment';
+   const status=document.createElement('span');status.className='pill';status.textContent=String(item.assignment_status||'unknown').replaceAll('_',' ');
+   const detail=document.createElement('p');detail.className='muted';
+   detail.textContent=(project?.project_code?project.project_code+' · ':'')+(project?.service_type||'Annotation')+' · '+(item.platform||project?.annotation_tool||'Tool not specified');
+   const date=document.createElement('p');date.className='hint';
+   date.textContent='Assigned: '+(item.assigned_at?new Date(item.assigned_at).toLocaleDateString():'Date unavailable')+(project?.due_date?' · Due: '+new Date(project.due_date+'T00:00:00').toLocaleDateString():'');
+   card.append(title,status,detail,date);
+   if(item.external_task_reference){
+    const ref=document.createElement('p');ref.className='hint';ref.textContent='Task reference: '+item.external_task_reference;card.append(ref);
+   }
+   if(project?.description){
+    const description=document.createElement('p');description.textContent=project.description;card.append(description);
+   }
+   if(project?.annotation_workspace_url){
+    const link=document.createElement('a');link.href=project.annotation_workspace_url;link.target='_blank';link.rel='noopener noreferrer';link.textContent='Open annotation workspace';card.append(link);
+   }
+   group.append(card);
+  }
+  root.append(group);
+ }
 }
 
 async function loadReviewerDashboard(user){
