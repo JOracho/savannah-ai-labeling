@@ -401,7 +401,7 @@ async function loadAnnotatorDashboard(user){
       });
       card.append(actionButton);
     }
-    if(String(assignment.platform||'').toLowerCase()==='supervisely' && String(project.annotation_tool||'').toLowerCase()==='supervisely'){
+    if(['accepted','in_progress','rework'].includes(assignment.assignment_status) && String(assignment.platform||'').toLowerCase()==='supervisely' && String(project.annotation_tool||'').toLowerCase()==='supervisely' && project.tool_access_mode!=='byot'){
       const submitBox=document.createElement('div');submitBox.className='subpanel';submitBox.style.marginTop='14px';
       const title=document.createElement('h4');title.textContent='Submit completed Supervisely work';title.style.color='var(--green)';submitBox.append(title);
       const help=document.createElement('p');help.className='hint';help.textContent='After saving your labels in Supervisely, enter the dataset ID and image ID for the completed image. Savannah imports the annotation and sends this assignment to review.';submitBox.append(help);
