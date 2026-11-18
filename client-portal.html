@@ -322,7 +322,7 @@ async function loadAnnotatorDashboard(user){
   $('adminPanel').classList.add('hidden');
   $('annotatorDashboard').classList.remove('hidden');
   const {data,error}=await supabase.from('project_assignments')
-    .select('id,platform,external_task_reference,assignment_status,assigned_at,projects(id,project_code,title,service_type,description,annotation_tool,annotation_workspace_url,due_date)')
+    .select('id,platform,external_task_reference,assignment_status,assigned_at,projects(id,project_code,title,service_type,description,annotation_tool,annotation_workspace_url,tool_access_mode,external_tool_name,due_date)')
     .eq('annotator_user_id',user.id).order('assigned_at',{ascending:false});
   if(error)throw error;
   const assignments=data||[];
@@ -400,6 +400,25 @@ async function loadAnnotatorDashboard(user){
         }catch(err){message('annotatorMessage',err.message||'Unable to update assignment status.','error');actionButton.disabled=false;}
       });
       card.append(actionButton);
+    }
+    if(['in_progress','rework'].includes(assignment.assignment_status) && project.tool_access_mode==='byot'){
+      const submitBox=document.createElement('div');submitBox.className='subpanel';submitBox.style.marginTop='14px';
+      const title=document.createElement('h4');title.textContent='Submit completed work';title.style.color='var(--green)';submitBox.append(title);
+      const help=document.createElement('p');help.className='hint';help.textContent='Upload your completed annotation export or agreed deliverable. Accepted formats: PDF, ZIP, TAR, TGZ, GZ, CSV and JSON. Files remain private until a Savannah reviewer approves them.';submitBox.append(help);
+      const form=document.createElement('form');form.style.display='grid';form.style.gap='8px';
+      const fl=document.createElement('label');fl.textContent='Completed deliverable files (up to 10 files)';
+      const fi=document.createElement('input');fi.type='file';fi.multiple=true;fi.required=true;fi.accept='.pdf,.zip,.tar,.tar.gz,.tgz,.gz,.csv,.json';
+      const dl=document.createElement('label');dl.textContent='Notes for the reviewer (optional)';
+      const di=document.createElement('textarea');di.rows=2;di.maxLength=1000;di.placeholder='Describe the export, completed batch, or any important notes.';
+      const btn=document.createElement('button');btn.type='submit';btn.className='btn';btn.textContent='Upload and submit for review';
+      const status=document.createElement('p');status.className='hint';status.setAttribute('role','status');
+      form.append(fl,fi,dl,di,btn,status);form.addEventListener('submit',async(ev)=>{ev.preventDefault();if(!fi.files?.length)return;btn.disabled=true;status.textContent='Uploading files securely…';try{
+        const fd=new FormData();fd.append('action','submit');fd.append('assignment_id',assignment.id);fd.append('description',di.value.trim());for(const file of fi.files)fd.append('files',file);
+        const {data:result,error:invokeError}=await supabase.functions.invoke('byot-submissions',{body:fd});
+        if(invokeError)throw invokeError;if(!result?.success)throw new Error(result?.error||'Submission failed.');
+        message('annotatorMessage',result.message||'Submitted for review.','success');await loadAnnotatorDashboard(user);
+      }catch(err){status.textContent=err.message||'Unable to submit files.';btn.disabled=false;}});
+      submitBox.append(form);card.append(submitBox);
     }
     if(['in_progress','rework'].includes(assignment.assignment_status) && String(assignment.platform||'').toLowerCase()==='supervisely' && String(project.annotation_tool||'').toLowerCase()==='supervisely' && project.tool_access_mode!=='byot'){
       const submitBox=document.createElement('div');submitBox.className='subpanel';submitBox.style.marginTop='14px';
@@ -885,35 +904,55 @@ async function loadReviewerDashboard(user){
  if(error)throw error;
  if(!data?.success)throw new Error(data?.error||'Unable to load the review queue.');
  const items=data.assignments||[];
+ const {data:byotData,error:byotError}=await supabase.functions.invoke('byot-submissions',{body:{action:'list_queue'}});
+ if(byotError)throw byotError;
+ const byotMap=new Map((byotData?.assignments||[]).map(x=>[x.id,x]));
  $('totalProjects').textContent=items.length;
  if(!items.length){const empty=document.createElement('p');empty.className='muted';empty.textContent='No submissions are waiting for review.';root.append(empty);return;}
  for(const item of items){
   const project=Array.isArray(item.projects)?item.projects[0]:item.projects;
+  const isByot=project?.tool_access_mode==='byot';
   const card=document.createElement('article');card.className='panel project';
   const heading=document.createElement('h3');heading.style.color='var(--green)';heading.textContent=project?.title||'Annotation assignment';
   const detail=document.createElement('p');detail.className='muted';
   const person=item.annotator||{};
-  const tool=project?.tool_access_mode==='byot'?(project.external_tool_name||project.annotation_tool||'Client-owned tool'):(project?.annotation_tool||'Tool not specified');
+  const tool=isByot?(project.external_tool_name||project.annotation_tool||'Client-owned tool'):(project?.annotation_tool||'Tool not specified');
   detail.textContent=(person.full_name?person.full_name+' · ':'')+(person.email||'Annotator')+' · '+(project?.service_type||'Annotation')+' · '+tool+' · '+item.assignment_status.replaceAll('_',' ');
   card.append(heading,detail);
   if(project?.annotation_workspace_url){
    const link=document.createElement('a');link.href=project.annotation_workspace_url;link.target='_blank';link.rel='noopener noreferrer';link.textContent='Open annotation workspace';card.append(link);
   }
   if(item.external_task_reference){const ref=document.createElement('p');ref.className='hint';ref.textContent='Task reference: '+item.external_task_reference;card.append(ref);}
-  const preview=document.createElement('div');preview.style.marginTop='12px';preview.textContent='Loading linked annotation preview…';card.append(preview);
+  if(isByot){
+   const submission=byotMap.get(item.id);const files=submission?.submissions||[];
+   const fileBox=document.createElement('div');fileBox.className='subpanel';fileBox.style.marginTop='12px';
+   const fh=document.createElement('h4');fh.textContent='Submitted deliverables';fileBox.append(fh);
+   if(!files.length){const emptyFiles=document.createElement('p');emptyFiles.className='hint';emptyFiles.textContent='No pending BYOT files were returned for this assignment. Refresh the queue or check the submission record.';fileBox.append(emptyFiles);}
+   for(const file of files){
+    const row=document.createElement('p');row.style.margin='8px 0';
+    const a=document.createElement('a');a.href=file.download_url;a.target='_blank';a.rel='noopener noreferrer';a.textContent='Download '+file.file_name;row.append(a);
+    const meta=document.createElement('span');meta.className='hint';meta.textContent=' · '+(Math.max(1,Math.round(Number(file.file_size_bytes||0)/1024))+' KB');row.append(meta);
+    if(file.description){const note=document.createElement('small');note.className='hint';note.textContent=' · '+file.description;row.append(note);}
+    fileBox.append(row);
+   }
+   card.append(fileBox);
+  }else{
+   const preview=document.createElement('div');preview.style.marginTop='12px';preview.textContent='Loading linked annotation preview…';card.append(preview);
    try{
     const {data:pd,error:pe}=await supabase.functions.invoke('supervisely-annotation-review',{body:{action:'list_assignment_annotations',assignment_id:item.id}});
     if(pe)throw pe;if(!pd?.success)throw new Error(pd?.error||'Preview unavailable.');preview.replaceChildren();const anns=pd.annotations||[];
     if(!anns.length){const note=document.createElement('p');note.className='hint';note.textContent='No annotation imports are linked to this submitted assignment yet.';preview.append(note);}
     for(const ann of anns){const cap=document.createElement('p');cap.className='hint';cap.textContent=(ann.image_name||'Image')+' · '+(ann.label_count||0)+' labels';const stage=document.createElement('div');stage.className='annotation-stage';const w=Number(ann.image_width)||Number(ann.annotation_json?.size?.width)||1;const ht=Number(ann.image_height)||Number(ann.annotation_json?.size?.height)||1;stage.style.aspectRatio=w+'/'+ht;const img=document.createElement('img');img.src=ann.image_url;img.alt=ann.image_name||'Submitted annotation';img.loading='lazy';img.addEventListener('load',()=>drawAnnotationOverlay(stage,img,ann.annotation_json||{},w,ht),{once:true});stage.append(img);preview.append(cap,stage);}
    }catch(previewErr){preview.textContent='Preview unavailable: '+(previewErr.message||'Unable to load linked annotation.');}
+  }
   const actions=document.createElement('div');actions.style.display='flex';actions.style.gap='10px';actions.style.flexWrap='wrap';
   for(const choice of [{status:'approved',label:'Approve work'},{status:'rework',label:'Request rework'}]){
    const button=document.createElement('button');button.type='button';button.className='btn'+(choice.status==='rework'?' secondary':'');button.textContent=choice.label;
    button.addEventListener('click',async()=>{
     button.disabled=true;
     try{
-     const {data:result,error:invokeError}=await supabase.functions.invoke('manage-annotators',{body:{action:'review_assignment',assignment_id:item.id,assignment_status:choice.status}});
+     const actionBody=isByot?{action:'review',assignment_id:item.id,assignment_status:choice.status}:{action:'review_assignment',assignment_id:item.id,assignment_status:choice.status};
+     const {data:result,error:invokeError}=await supabase.functions.invoke(isByot?'byot-submissions':'manage-annotators',{body:actionBody});
      if(invokeError)throw invokeError;
      if(!result?.success)throw new Error(result?.error||'Unable to save the review decision.');
      message('reviewerMessage',result.message||'Review decision saved.','success');
