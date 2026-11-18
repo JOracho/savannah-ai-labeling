@@ -425,10 +425,10 @@ $('annotationImportForm').addEventListener('submit',async(e)=>{
     const projectId=$('annotationReviewProject').value;
     const project=adminProjects.find(p=>p.id===projectId);
     if(!project)throw new Error('Choose a valid Savannah Supervisely project.');
-    const match=String(project.annotation_workspace_url||'').match(/\\/projects\\/(\\d+)/);
-    if(!match)throw new Error('The selected project does not have a valid Supervisely workspace link.');
+    const externalProjectId=String(project.annotation_workspace_url||'').split('/projects/')[1]?.split('/')[0];
+    if(!externalProjectId||!/^\\d+$/.test(externalProjectId))throw new Error('The selected project does not have a valid Supervisely workspace link.');
     const {data,error}=await supabase.functions.invoke('supervisely-annotation-review',{body:{
-      action:'import',project_id:projectId,external_project_id:match[1],
+      action:'import',project_id:projectId,external_project_id:externalProjectId,
       external_dataset_id:$('annotationDatasetId').value.trim(),
       external_image_id:$('annotationImageId').value.trim()
     }});
@@ -489,7 +489,7 @@ async function loadAdminPanel(){
  adminProjects=data||[];
  const annotationProjectSelect=$('annotationReviewProject');
  annotationProjectSelect.replaceChildren();
- const superviselyProjects=adminProjects.filter(p=>String(p.annotation_tool||'').toLowerCase()==='supervisely'&&/\\/projects\\/\\d+/.test(String(p.annotation_workspace_url||'')));
+ const superviselyProjects=adminProjects.filter(p=>String(p.annotation_tool||'').toLowerCase()==='supervisely'&&String(p.annotation_workspace_url||'').includes('/projects/'));
  if(superviselyProjects.length){
    for(const p of superviselyProjects){const opt=document.createElement('option');opt.value=p.id;opt.textContent=(p.project_code?p.project_code+' · ':'')+p.title;annotationProjectSelect.append(opt);}
    annotationProjectSelect.disabled=false;$('importAnnotationButton').disabled=false;
