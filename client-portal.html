@@ -26,7 +26,7 @@ a{color:inherit}.topbar{background:var(--green);color:#fff;padding:14px 0}.wrap{
     <button class="btn" id="authSubmit" type="submit" style="margin-top:18px">Sign in</button>
   </form>
   <div id="authMessage" class="notice hidden" role="status"></div>
-  <p class="hint">Use the email address associated with your Savannah AI Labeling client account. If you are new, create an account first.</p>
+  <p class="hint">Use the email address associated with your Savannah AI Labeling account. If you are new, create an account first.</p>
 </section>
 <section id="dashboard" class="hidden">
   <div class="dashboard-head"><div><div class="eyebrow" id="dashboardEyebrow">Client dashboard</div><h2 id="welcomeTitle">Your projects</h2><p class="muted" id="welcomeEmail"></p></div><button class="btn secondary" id="signOut" type="button">Sign out</button></div>
@@ -135,8 +135,8 @@ function message(id, text, type='') { const el=$(id); el.textContent=text; el.cl
 function setMode(next) {
   mode=next; $('loginTab').classList.toggle('active',mode==='login'); $('signupTab').classList.toggle('active',mode==='signup');
   $('nameField').classList.toggle('hidden',mode!=='signup'); $('fullName').required=mode==='signup';
-  $('authTitle').textContent=mode==='login'?'Welcome back':'Create your client account';
-  $('authIntro').textContent=mode==='login'?'Sign in to view your project dashboard.':'Register with your work email to access project updates.';
+  $('authTitle').textContent=mode==='login'?'Welcome back':'Create your Savannah account';
+  $('authIntro').textContent=mode==='login'?'Sign in to open your Savannah workspace.':'Register with your email to access your Savannah workspace.';
   $('authSubmit').textContent=mode==='login'?'Sign in':'Create account';
   $('authMessage').classList.add('hidden');
 }
