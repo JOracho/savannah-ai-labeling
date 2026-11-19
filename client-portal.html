@@ -533,7 +533,7 @@ async function loadReviewAssignments(){
   const card=document.createElement('article');card.className='panel project';card.dataset.assignmentId=item.id;
   const heading=document.createElement('h4');heading.style.margin='0';heading.style.color='var(--green)';heading.textContent=project?.title||'Annotation assignment';
   const detail=document.createElement('p');detail.className='muted';detail.textContent=(annotator?.full_name?annotator.full_name+' · ':'')+(annotator?.email||'Annotator')+' · '+(project?.service_type||'Annotation')+' · '+(isByot?(project.external_tool_name||'Client-owned tool'):'Managed tool')+' · '+item.assignment_status.replaceAll('_',' ');
-  await renderQaIssues({id:item.id,projectId:project?.id||item.project_id,annotatorId:item.annotator_user_id},card,'reviewer',user,()=>loadReviewerDashboard(user));
+  await renderQaIssues({id:item.id,projectId:project?.id||item.project_id,annotatorId:item.annotator_user_id||person.id||person.user_id},card,'reviewer',user,()=>loadReviewerDashboard(user));
   const actions=document.createElement('div');actions.style.display='flex';actions.style.gap='10px';actions.style.flexWrap='wrap';
   if(isByot){
    const files=byotMap.get(item.id)?.submissions||[];
