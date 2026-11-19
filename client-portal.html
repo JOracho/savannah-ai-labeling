@@ -26,6 +26,7 @@ a{color:inherit}.topbar{background:var(--green);color:#fff;padding:14px 0}.wrap{
     <button class="btn" id="authSubmit" type="submit" style="margin-top:18px">Sign in</button>
   </form>
   <div id="authMessage" class="notice hidden" role="status"></div>
+  <p id="forgotPasswordLink" class="hint"><a href="reset-password.html" style="color:var(--green);font-weight:700">Forgot password?</a></p>
   <p class="hint">Use the email address associated with your Savannah AI Labeling account. If you are new, create an account first.</p>
 </section>
 <section id="dashboard" class="hidden">
@@ -213,6 +214,8 @@ function setMode(next) {
   $('authMessage').classList.add('hidden');
 }
 $('loginTab').addEventListener('click',()=>setMode('login'));
+$('signupTab').addEventListener('click',()=>{$('forgotPasswordLink').classList.add('hidden');});
+$('loginTab').addEventListener('click',()=>{$('forgotPasswordLink').classList.remove('hidden');});
 $('signupTab').addEventListener('click',()=>setMode('signup'));
 $('authForm').addEventListener('submit',async(e)=>{
  e.preventDefault(); $('authSubmit').disabled=true;
