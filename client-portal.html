@@ -669,8 +669,9 @@ async function loadAnnotationReview() {
   if(!items.length){const empty=document.createElement('p');empty.className='muted';empty.textContent='No annotations have been imported for this project yet. Import the saved test annotation above.';root.append(empty);return;}
   for(const item of items){
     const card=document.createElement('article');card.className='annotation-preview-card';
-    const heading=document.createElement('h5');heading.textContent=item.image_name||'Annotated image';
-    const detail=document.createElement('p');detail.className='muted';detail.textContent=(item.label_count||0)+' annotation object(s) · Image '+item.external_image_id+' · Imported '+new Date(item.imported_at).toLocaleString();
+    const heading=document.createElement('h5');heading.textContent=item.image_name||(item.media_type==='pointcloud'?'Point cloud':'Annotated image');
+    const detail=document.createElement('p');detail.className='muted';detail.textContent=(item.label_count||0)+' annotation object(s) · '+(item.media_type==='pointcloud'?'Point cloud ':'Image ')+item.external_image_id+' · Imported '+new Date(item.imported_at).toLocaleString();
+    if(item.media_type==='pointcloud'){const link=document.createElement('a');link.href=item.image_url;link.target='_blank';link.rel='noopener noreferrer';link.textContent='Download imported point-cloud file';card.append(heading,detail,link);root.append(card);continue;}
     const width=Number(item.image_width)||Number(item.annotation_json?.size?.width)||1;
     const height=Number(item.image_height)||Number(item.annotation_json?.size?.height)||1;
     const stage=document.createElement('div');stage.className='annotation-stage';stage.style.aspectRatio=width+'/'+height;
@@ -690,6 +691,7 @@ $('annotationImportForm').addEventListener('submit',async(e)=>{
     if(!externalProjectId||!/^[0-9]+$/.test(externalProjectId))throw new Error('The selected project does not have a valid Supervisely workspace link.');
     const {data,error}=await supabase.functions.invoke('supervisely-annotation-review',{body:{
       action:'import',project_id:projectId,external_project_id:externalProjectId,
+      media_type:/(lidar|point cloud|3d)/i.test((project.service_type||'')+' '+(project.title||''))?'pointcloud':'image',
       external_dataset_id:$('annotationDatasetId').value.trim(),
       external_image_id:$('annotationImageId').value.trim()
     }});
