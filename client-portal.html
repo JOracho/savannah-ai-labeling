@@ -86,7 +86,7 @@ a{color:inherit}.topbar{background:var(--green);color:#fff;padding:14px 0}.wrap{
     <div id="adminMessage" class="notice hidden" role="status"></div>
     <section class="subpanel" style="margin-top:18px">
       <h3 style="color:var(--green);font: bold 22px Georgia,serif;margin:0 0 6px">CVAT connection</h3>
-      <p class="muted">Check that Savannah can securely connect to your CVAT workspace. This test only reads the task list and does not create or change CVAT tasks.</p>
+      <p class="muted">The CVAT connector is prepared in staging. It will be testable after the CVAT API token is added securely to Neon Function secrets.</p>
       <button class="btn secondary" id="testCvatConnection" type="button">Test CVAT connection</button>
       <div id="cvatConnectionMessage" class="notice hidden" role="status" style="margin-top:12px"></div>
     </section>
@@ -522,21 +522,7 @@ async function loadAnnotatorDashboard(user){
       });
       card.append(actionButton);
     }
-     if(['in_progress','rework'].includes(assignment.assignment_status) && String(assignment.platform||'').toLowerCase()==='cvat' && String(project.annotation_tool||'').toLowerCase()==='cvat' && project.tool_access_mode!=='byot'){
-       const submitBox=document.createElement('div');submitBox.className='subpanel';submitBox.style.marginTop='14px';
-       const title=document.createElement('h4');title.textContent='Submit completed CVAT work';title.style.color='var(--green)';submitBox.append(title);
-       const help=document.createElement('p');help.className='hint';help.textContent='Save your annotations in CVAT, then submit the assigned task or job for Savannah review. The task and frame range are taken from your assignment.';submitBox.append(help);
-       const btn=document.createElement('button');btn.type='button';btn.className='btn';btn.textContent='Submit CVAT annotations for review';
-       const status=document.createElement('p');status.className='hint';status.setAttribute('role','status');
-       btn.addEventListener('click',async()=>{btn.disabled=true;status.textContent='Importing saved CVAT annotations and source frames…';try{
-         if(!assignment.external_task_id)throw new Error('Your CVAT task ID is missing. Ask the administrator to update your assignment.');
-         const {data:result,error}=await supabase.functions.invoke('cvat-annotation-review',{body:{action:'submit',assignment_id:assignment.id,project_id:project.id}});
-         if(error)throw error;if(!result?.success)throw new Error(result?.error||'CVAT submission failed.');
-         status.textContent=result.message||'Submitted for review.';await loadAnnotatorDashboard(user);
-       }catch(err){status.textContent=err.message||'Unable to submit CVAT annotations.';btn.disabled=false;}});
-       submitBox.append(btn,status);card.append(submitBox);
-     }
-    if(['in_progress','rework'].includes(assignment.assignment_status) && project.tool_access_mode==='byot'){
+if(['in_progress','rework'].includes(assignment.assignment_status) && project.tool_access_mode==='byot'){
       const submitBox=document.createElement('div');submitBox.className='subpanel';submitBox.style.marginTop='14px';
       const title=document.createElement('h4');title.textContent='Submit completed work';title.style.color='var(--green)';submitBox.append(title);
       const help=document.createElement('p');help.className='hint';help.textContent='Upload your completed annotation export or agreed deliverable. Accepted formats: PDF, ZIP, TAR, TGZ, GZ, CSV and JSON. Files remain private until a Savannah reviewer approves them.';submitBox.append(help);
