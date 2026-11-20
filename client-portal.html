@@ -105,9 +105,9 @@ a{color:inherit}.topbar{background:var(--green);color:#fff;padding:14px 0}.wrap{
       <div id="createCvatTaskMessage" class="notice hidden" role="status"></div>
     </section>
     <section class="subpanel" style="margin-top:22px">
-      <h3 style="color:var(--green);font: bold 24px Georgia,serif;margin:0 0 6px">Upload completed deliverables</h3>
-      <p class="muted">Upload completed annotation exports or project documents. The selected project's client will be able to access the files in their Deliverables section. Maximum file size: 100 MB.</p>
-      <form id="deliverableUploadForm">
+      <h3 style="color:var(--green);font: bold 24px Georgia,serif;margin:0 0 6px">Client deliverables</h3>
+      <p class="muted">The Neon upload route for administrator-published deliverables is being finalized. This control is temporarily hidden in staging; approved BYOT files and managed annotation review remain separate workflows.</p>
+      <form id="deliverableUploadForm" hidden>
         <label for="deliverableProject">Client project</label>
         <select id="deliverableProject" required style="width:100%;padding:12px;border:1px solid #d7d9d2;border-radius:4px;font:inherit">
           <option value="">Loading projects…</option>
