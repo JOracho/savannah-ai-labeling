@@ -548,7 +548,6 @@ async function loadAnnotatorDashboard(user){
       const btn=document.createElement('button');btn.type='submit';btn.className='btn';btn.textContent='Upload and submit for review';
       const status=document.createElement('p');status.className='hint';status.setAttribute('role','status');
       form.append(fl,fi,dl,di,btn,status);form.addEventListener('submit',async(ev)=>{ev.preventDefault();if(!fi.files?.length)return;btn.disabled=true;status.textContent='Uploading files securely…';try{
-        const fd=new FormData();fd.append('action','submit');fd.append('assignment_id',assignment.id);fd.append('description',di.value.trim());for(const file of fi.files)fd.append('files',file);
         const files=Array.from(fi.files);
          const {data:intent,error:intentError}=await supabase.functions.invoke('byot-submissions',{body:{action:'upload_intent',assignment_id:assignment.id,description:di.value.trim(),files:files.map(file=>({name:file.name,size:file.size}))}});
          if(intentError)throw intentError;
@@ -562,10 +561,11 @@ async function loadAnnotatorDashboard(user){
     if(['in_progress','rework'].includes(assignment.assignment_status) && String(assignment.platform||'').toLowerCase()==='supervisely' && String(project.annotation_tool||'').toLowerCase()==='supervisely' && project.tool_access_mode!=='byot'){
       const submitBox=document.createElement('div');submitBox.className='subpanel';submitBox.style.marginTop='14px';
       const title=document.createElement('h4');title.textContent='Submit completed Supervisely work';title.style.color='var(--green)';submitBox.append(title);
-      const help=document.createElement('p');help.className='hint';help.textContent='After saving your labels in Supervisely, enter the dataset ID and image ID for the completed image. Savannah imports the annotation and sends this assignment to review.';submitBox.append(help);
+      const pointcloud=/(lidar|point cloud|3d)/i.test((project.service_type||'')+' '+(project.title||''));
+      const help=document.createElement('p');help.className='hint';help.textContent=pointcloud?'After saving your point-cloud annotations in Supervisely, enter the dataset ID and point-cloud ID. Savannah imports the annotation JSON and source point-cloud file for reviewer access.':'After saving your labels in Supervisely, enter the dataset ID and image ID for the completed image. Savannah imports the annotation and sends this assignment to review.';submitBox.append(help);
       const form=document.createElement('form');form.style.display='grid';form.style.gap='8px';
       const dl=document.createElement('label');dl.textContent='Supervisely dataset ID';const di=document.createElement('input');di.inputMode='numeric';di.pattern='[0-9]+';di.required=true;di.placeholder='Dataset ID';
-      const il=document.createElement('label');il.textContent='Supervisely image ID';const ii=document.createElement('input');ii.inputMode='numeric';ii.pattern='[0-9]+';ii.required=true;ii.placeholder='Image ID';
+      const il=document.createElement('label');il.textContent=pointcloud?'Supervisely point-cloud ID':'Supervisely image ID';const ii=document.createElement('input');ii.inputMode='numeric';ii.pattern='[0-9]+';ii.required=true;ii.placeholder=pointcloud?'Point-cloud ID':'Image ID';
       const btn=document.createElement('button');btn.type='submit';btn.className='btn';btn.textContent='Submit annotation for review';
       const status=document.createElement('p');status.className='hint';status.setAttribute('role','status');
       form.append(dl,di,il,ii,btn,status);form.addEventListener('submit',async(ev)=>{ev.preventDefault();btn.disabled=true;status.textContent='Importing your saved annotation…';try{
