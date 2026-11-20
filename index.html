@@ -14,16 +14,6 @@
 @media(max-width:520px){.portal-grid{grid-template-columns:1fr}.grid,.steps,.samples{grid-template-columns:1fr}.hero h1{font-size:43px}.section{padding:58px 0}}
   .service img{width:100%;height:180px;object-fit:cover;display:block;border-radius:5px;margin-bottom:16px}
 
-/* Password recovery panel: hidden unless Supabase confirms a recovery session. */
-.recovery-overlay{display:none;position:fixed;inset:0;z-index:1000;background:rgba(10,25,17,.82);padding:24px;align-items:center;justify-content:center}
-.recovery-overlay.visible{display:flex}
-.recovery-card{width:min(460px,100%);background:var(--ivory);color:var(--ink);padding:30px;border:1px solid var(--gold);border-radius:8px;box-shadow:0 18px 60px #0006}
-.recovery-card h2{font: bold 30px Georgia,serif;color:var(--green);margin:0 0 8px}
-.recovery-card p{color:var(--muted);font-size:14px}
-.recovery-card button{cursor:pointer;margin-top:16px}
-.recovery-message{font-size:13px;margin-top:14px;min-height:20px}
-.recovery-message.error{color:#a12b2b}.recovery-message.success{color:#245b36}
-
 </style>
 </head>
 <body>
@@ -124,68 +114,6 @@ document.querySelectorAll('#navLinks a').forEach(a=>a.addEventListener('click',(
     </form>
   </div>
 </div>
-<script type="module">
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.49.1';
 
-const recoverySupabase = createClient(
-  'https://kqdvhkwkynuqjcoboghh.supabase.co',
-  'sb_publishable_imNJytsSS0QcIM0x3-NZoQ_FbvNB2Do'
-);
-
-const recoveryOverlay = document.getElementById('recoveryOverlay');
-const recoveryForm = document.getElementById('recoveryForm');
-const recoveryMessage = document.getElementById('recoveryMessage');
-const recoverySubmit = document.getElementById('recoverySubmit');
-
-function showRecoveryForm() {
-  recoveryOverlay.classList.add('visible');
-  document.getElementById('recoveryPassword').focus();
-}
-
-recoverySupabase.auth.onAuthStateChange((event, session) => {
-  if (event === 'PASSWORD_RECOVERY' && session) {
-    showRecoveryForm();
-  }
-});
-
-recoveryForm.addEventListener('submit', async (event) => {
-  event.preventDefault();
-  const password = document.getElementById('recoveryPassword').value;
-  const confirmation = document.getElementById('recoveryConfirm').value;
-
-  recoveryMessage.textContent = '';
-  recoveryMessage.className = 'recovery-message';
-
-  if (password.length < 8) {
-    recoveryMessage.textContent = 'Use at least 8 characters for your new password.';
-    recoveryMessage.classList.add('error');
-    return;
-  }
-  if (password !== confirmation) {
-    recoveryMessage.textContent = 'The passwords do not match. Please check them and try again.';
-    recoveryMessage.classList.add('error');
-    return;
-  }
-
-  recoverySubmit.disabled = true;
-  recoverySubmit.textContent = 'Updating…';
-
-  const { error } = await recoverySupabase.auth.updateUser({ password });
-
-  if (error) {
-    recoveryMessage.textContent = error.message || 'The password could not be updated. Request a fresh reset link and try again.';
-    recoveryMessage.classList.add('error');
-    recoverySubmit.disabled = false;
-    recoverySubmit.textContent = 'Update Password';
-    return;
-  }
-
-  recoveryForm.reset();
-  recoveryMessage.textContent = 'Your password has been updated successfully. You can now close this panel and sign in with your new password.';
-  recoveryMessage.classList.add('success');
-  recoverySubmit.textContent = 'Password Updated';
-  recoverySubmit.disabled = true;
-});
-</script>
 
 </body></html>
