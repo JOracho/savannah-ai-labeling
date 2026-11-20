@@ -99,21 +99,4 @@ document.querySelectorAll('#navLinks a').forEach(a=>a.addEventListener('click',(
 
 </script>
 
-<div class="recovery-overlay" id="recoveryOverlay" role="dialog" aria-modal="true" aria-labelledby="recoveryTitle">
-  <div class="recovery-card">
-    <div class="eyebrow">Savannah AI Labeling · Account security</div>
-    <h2 id="recoveryTitle">Create a new password</h2>
-    <p>Your password reset link has been verified. Choose a new password for your account.</p>
-    <form id="recoveryForm">
-      <label for="recoveryPassword">New password</label>
-      <input id="recoveryPassword" type="password" autocomplete="new-password" minlength="8" required>
-      <label for="recoveryConfirm">Confirm new password</label>
-      <input id="recoveryConfirm" type="password" autocomplete="new-password" minlength="8" required>
-      <button class="btn" id="recoverySubmit" type="submit">Update Password</button>
-      <div class="recovery-message" id="recoveryMessage" role="status" aria-live="polite"></div>
-    </form>
-  </div>
-</div>
-
-
 </body></html>
