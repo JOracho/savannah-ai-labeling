@@ -197,10 +197,43 @@ a{color:inherit}.topbar{background:var(--green);color:#fff;padding:14px 0}.wrap{
 </main>
 <footer class="footer"><div class="wrap">© <span id="year"></span> Savannah AI Labeling · Ground Truth. Built with Precision.</div></footer>
 <script type="module">
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.49.1';
-const SUPABASE_URL = 'https://kqdvhkwkynuqjcoboghh.supabase.co';
-const SUPABASE_PUBLISHABLE_KEY = 'sb_publishable_imNJytsSS0QcIM0x3-NZoQ_FbvNB2Do';
-const supabase = createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY);
+import { createClient, SupabaseAuthAdapter } from 'https://esm.sh/@neondatabase/neon-js@0.9.0-beta';
+const NEON_AUTH_URL = 'https://ep-proud-frost-b9l8tcnp.neonauth.c-7.eu-central-1.aws.neon.tech/savannah_staging/auth';
+const NEON_DATA_API_URL = 'https://ep-proud-frost-b9l8tcnp.apirest.c-7.eu-central-1.aws.neon.tech/savannah_staging/rest/v1';
+const FUNCTION_URLS = {
+  'manage-annotators': 'https://br-calm-cherry-b973fs8j-savannahapi.compute.c-7.eu-central-1.aws.neon.tech/manage-annotators',
+  'byot-submissions': 'https://br-calm-cherry-b973fs8j-byotsubmissions.compute.c-7.eu-central-1.aws.neon.tech/',
+  'supervisely-annotation-review': 'https://br-calm-cherry-b973fs8j-superviselyreview.compute.c-7.eu-central-1.aws.neon.tech/',
+  'cvat-annotation-review': 'https://br-calm-cherry-b973fs8j-cvatreview.compute.c-7.eu-central-1.aws.neon.tech/',
+  'create-supervisely-project': 'https://br-calm-cherry-b973fs8j-slyproject.compute.c-7.eu-central-1.aws.neon.tech/',
+  'cvat-connection-test': 'https://br-calm-cherry-b973fs8j-cvatconnect.compute.c-7.eu-central-1.aws.neon.tech/'
+};
+const neon = createClient({ auth: { adapter: SupabaseAuthAdapter(), url: NEON_AUTH_URL }, dataApi: { url: NEON_DATA_API_URL } });
+async function callNeonFunction(url, body) {
+  const { data: sessionData, error: sessionError } = await neon.auth.getSession();
+  const token = sessionData?.session?.access_token;
+  if (sessionError || !token) return { data: null, error: new Error('Your session has expired. Sign in again.') };
+  try {
+    const response = await fetch(url, { method: 'POST', headers: { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' }, body: JSON.stringify(body || {}) });
+    const data = await response.json().catch(() => ({}));
+    return response.ok ? { data, error: null } : { data, error: new Error(data.error || 'Savannah service request failed (' + response.status + ').') };
+  } catch (error) { return { data: null, error }; }
+}
+const supabase = {
+  from: (...args) => neon.from(...args),
+  auth: neon.auth,
+  functions: { invoke: (name, options = {}) => {
+    const url = FUNCTION_URLS[name];
+    if (!url) return Promise.resolve({ data: null, error: new Error('This service is not yet connected to Neon staging: ' + name) });
+    if (options.body instanceof FormData) return Promise.resolve({ data: null, error: new Error('This upload must use the secure signed-upload workflow.') });
+    return callNeonFunction(url, options.body);
+  }}
+};
+async function ensureNeonProfile(user) {
+  const result = await callNeonFunction('https://br-calm-cherry-b973fs8j-savannahapi.compute.c-7.eu-central-1.aws.neon.tech/profile/ensure', { full_name: user.user_metadata?.full_name || user.name || null });
+  if (result.error || !result.data?.success) throw result.error || new Error(result.data?.error || 'Unable to prepare your Savannah profile.');
+  return { ...user, app_metadata: { ...(user.app_metadata || {}), role: result.data.profile.role } };
+}
 const $ = (id) => document.getElementById(id);
 let mode = 'login';
 $('year').textContent = new Date().getFullYear();
@@ -492,8 +525,12 @@ async function loadAnnotatorDashboard(user){
       const status=document.createElement('p');status.className='hint';status.setAttribute('role','status');
       form.append(fl,fi,dl,di,btn,status);form.addEventListener('submit',async(ev)=>{ev.preventDefault();if(!fi.files?.length)return;btn.disabled=true;status.textContent='Uploading files securely…';try{
         const fd=new FormData();fd.append('action','submit');fd.append('assignment_id',assignment.id);fd.append('description',di.value.trim());for(const file of fi.files)fd.append('files',file);
-        const {data:result,error:invokeError}=await supabase.functions.invoke('byot-submissions',{body:fd});
-        if(invokeError)throw invokeError;if(!result?.success)throw new Error(result?.error||'Submission failed.');
+        const files=Array.from(fi.files);
+         const {data:intent,error:intentError}=await supabase.functions.invoke('byot-submissions',{body:{action:'upload_intent',assignment_id:assignment.id,description:di.value.trim(),files:files.map(file=>({name:file.name,size:file.size}))}});
+         if(intentError)throw intentError;
+         for(let i=0;i<files.length;i++){const upload=intent.uploads[i];const response=await fetch(upload.upload_url,{method:'PUT',headers:upload.headers,body:files[i]});if(!response.ok)throw new Error('Upload failed for '+files[i].name+' ('+response.status+').');}
+         const {data:result,error:finalizeError}=await supabase.functions.invoke('byot-submissions',{body:{action:'finalize_upload',assignment_id:assignment.id,batch_id:intent.batch_id}});
+         if(finalizeError)throw finalizeError;if(!result?.success)throw new Error(result?.error||'Submission failed.');
         message('annotatorMessage',result.message||'Submitted for review.','success');await loadAnnotatorDashboard(user);
       }catch(err){status.textContent=err.message||'Unable to submit files.';btn.disabled=false;}});
       submitBox.append(form);card.append(submitBox);
@@ -508,8 +545,9 @@ async function loadAnnotatorDashboard(user){
       const btn=document.createElement('button');btn.type='submit';btn.className='btn';btn.textContent='Submit annotation for review';
       const status=document.createElement('p');status.className='hint';status.setAttribute('role','status');
       form.append(dl,di,il,ii,btn,status);form.addEventListener('submit',async(ev)=>{ev.preventDefault();btn.disabled=true;status.textContent='Importing your saved annotation…';try{
-        const {data:result,error:invokeError}=await supabase.functions.invoke('supervisely-annotation-review',{body:{action:'submit',assignment_id:assignment.id,project_id:project.id,external_dataset_id:di.value.trim(),external_image_id:ii.value.trim(),external_project_id:String(project.annotation_workspace_url||'').split('/projects/')[1]?.split('/')[0]}});
-        if(invokeError)throw invokeError;if(!result?.success)throw new Error(result?.error||'Submission failed.');status.textContent=result.message||'Submitted for review.';await loadAnnotatorDashboard(user);
+        const pointcloud=/(lidar|point cloud|3d)/i.test((project.service_type||'')+' '+(project.title||''));
+         const {data:result,error:invokeError}=await supabase.functions.invoke('supervisely-annotation-review',{body:{action:'submit',assignment_id:assignment.id,project_id:project.id,media_type:pointcloud?'pointcloud':'image',external_dataset_id:di.value.trim(),external_image_id:ii.value.trim(),external_project_id:String(project.annotation_workspace_url||'').split('/projects/')[1]?.split('/')[0]}});
+         if(invokeError)throw invokeError;if(!result?.success)throw new Error(result?.error||'Submission failed.');status.textContent=result.message||'Submitted for review.';await loadAnnotatorDashboard(user);
       }catch(err){status.textContent=err.message||'Unable to submit annotation.';btn.disabled=false;}});
       submitBox.append(form);card.append(submitBox);
     }
@@ -928,44 +966,21 @@ $('deliverableUploadForm').addEventListener('submit', async (e) => {
   const allowedExtensions = /\.(tar|tar\.gz|tgz|zip|json|csv|pdf)$/i;
   if (!allowedExtensions.test(file.name)) {
     message('deliverableUploadMessage', 'Choose a TAR, TAR.GZ, TGZ, ZIP, JSON, CSV or PDF file.', 'error');
-    return;
-  }
-  const lowerName = file.name.toLowerCase();
-  let contentType = file.type || 'application/octet-stream';
-  if (lowerName.endsWith('.tar')) contentType = 'application/x-tar';
-  else if (lowerName.endsWith('.tar.gz') || lowerName.endsWith('.tgz')) contentType = 'application/gzip';
-  else if (lowerName.endsWith('.zip')) contentType = 'application/zip';
-  else if (lowerName.endsWith('.json')) contentType = 'application/json';
-  else if (lowerName.endsWith('.csv')) contentType = 'text/csv';
-  else if (lowerName.endsWith('.pdf')) contentType = 'application/pdf';
-  const safeName = file.name.replace(/[^a-zA-Z0-9._-]+/g, '_').slice(-150);
-  const storagePath = projectId + '/' + crypto.randomUUID() + '-' + safeName;
-  button.disabled = true;
-  message('deliverableUploadMessage', 'Uploading file securely…');
-  let uploaded = false;
-  try {
-    const { error: uploadError } = await supabase.storage.from('project-deliverables').upload(storagePath, file, {
-      contentType,
-      upsert: false
-    });
-    if (uploadError) throw uploadError;
-    uploaded = true;
-    const { error: insertError } = await supabase.from('project_deliverables').insert({
-      project_id: projectId,
-      file_name: file.name,
-      storage_path: storagePath,
-      description: description || null,
-      uploaded_by: currentPortalUser.id
-    });
-    if (insertError) throw insertError;
-    $('deliverableFile').value = '';
+    button.disabled = true;
+   message('deliverableUploadMessage', 'Uploading file securely…');
+   try {
+     const {data:intent,error:intentError}=await supabase.functions.invoke('byot-submissions',{body:{action:'admin_upload_intent',project_id:projectId,file_name:file.name,file_size_bytes:file.size,mime_type:contentType}});
+     if(intentError)throw intentError;
+     const uploaded=await fetch(intent.upload_url,{method:'PUT',headers:intent.headers,body:file});
+     if(!uploaded.ok)throw new Error('File upload failed ('+uploaded.status+').');
+     const {data:saved,error:saveError}=await supabase.functions.invoke('byot-submissions',{body:{action:'admin_finalize_upload',project_id:projectId,file_name:file.name,storage_path:intent.storage_path,description}});
+     if(saveError)throw saveError;
+     if(!saved?.success)throw new Error(saved?.error||'Unable to publish the deliverable.');
+$('deliverableFile').value = '';
     $('deliverableDescription').value = '';
     message('deliverableUploadMessage', 'Deliverable uploaded successfully. The assigned client can now find it in the Deliverables section of their project dashboard.', 'success');
   } catch (err) {
-    if (uploaded) {
-      await supabase.storage.from('project-deliverables').remove([storagePath]);
-    }
-    message('deliverableUploadMessage', err.message || 'Unable to upload this deliverable.', 'error');
+     message('deliverableUploadMessage', err.message || 'Unable to upload this deliverable.', 'error');
   } finally {
     button.disabled = false;
   }
@@ -1097,10 +1112,11 @@ async function loadReviewerDashboard(user){
   }else{
    const preview=document.createElement('div');preview.style.marginTop='12px';preview.textContent='Loading linked annotation preview…';card.append(preview);
    try{
-    const {data:pd,error:pe}=await supabase.functions.invoke('supervisely-annotation-review',{body:{action:'list_assignment_annotations',assignment_id:item.id}});
+    const reviewFunction=project?.annotation_tool==='cvat'?'cvat-annotation-review':'supervisely-annotation-review';
+     const {data:pd,error:pe}=await supabase.functions.invoke(reviewFunction,{body:{action:'list_assignment_annotations',assignment_id:item.id}});
     if(pe)throw pe;if(!pd?.success)throw new Error(pd?.error||'Preview unavailable.');preview.replaceChildren();const anns=pd.annotations||[];
     if(!anns.length){const note=document.createElement('p');note.className='hint';note.textContent='No annotation imports are linked to this submitted assignment yet.';preview.append(note);}
-    for(const ann of anns){const cap=document.createElement('p');cap.className='hint';cap.textContent=(ann.image_name||'Image')+' · '+(ann.label_count||0)+' labels';const stage=document.createElement('div');stage.className='annotation-stage';const w=Number(ann.image_width)||Number(ann.annotation_json?.size?.width)||1;const ht=Number(ann.image_height)||Number(ann.annotation_json?.size?.height)||1;stage.style.aspectRatio=w+'/'+ht;const img=document.createElement('img');img.src=ann.image_url;img.alt=ann.image_name||'Submitted annotation';img.loading='lazy';img.addEventListener('load',()=>drawAnnotationOverlay(stage,img,ann.annotation_json||{},w,ht),{once:true});stage.append(img);preview.append(cap,stage);}
+    for(const ann of anns){const cap=document.createElement('p');cap.className='hint';cap.textContent=(ann.image_name||'Submitted media')+' · '+(ann.label_count||0)+' labels';if(ann.media_type==='pointcloud'){const link=document.createElement('a');link.href=ann.image_url;link.target='_blank';link.rel='noopener noreferrer';link.textContent='Download submitted point cloud';preview.append(cap,link);continue;}const stage=document.createElement('div');stage.className='annotation-stage';const w=Number(ann.image_width)||Number(ann.annotation_json?.size?.width)||1;const ht=Number(ann.image_height)||Number(ann.annotation_json?.size?.height)||1;stage.style.aspectRatio=w+'/'+ht;const img=document.createElement('img');img.src=ann.image_url;img.alt=ann.image_name||'Submitted annotation';img.loading='lazy';img.addEventListener('load',()=>drawAnnotationOverlay(stage,img,ann.annotation_json||{},w,ht),{once:true});stage.append(img);preview.append(cap,stage);}
    }catch(previewErr){preview.textContent='Preview unavailable: '+(previewErr.message||'Unable to load linked annotation.');}
   }
   const actions=document.createElement('div');actions.style.display='flex';actions.style.gap='10px';actions.style.flexWrap='wrap';
@@ -1124,7 +1140,8 @@ async function loadReviewerDashboard(user){
 }
 
 async function showDashboard(user, forceRefresh=false){
- const portalMode=new URLSearchParams(window.location.search).get('portal');
+  user = await ensureNeonProfile(user);
+  const portalMode=new URLSearchParams(window.location.search).get('portal');
  const userRole=user.app_metadata?.role||'client';
  const expectedRoles={client:['client'],annotator:['annotator'],admin:['admin'],reviewer:['reviewer','admin'],teamlead:['team_lead']};
  if(portalMode && expectedRoles[portalMode] && !expectedRoles[portalMode].includes(userRole)){
@@ -1199,7 +1216,7 @@ async function showDashboard(user, forceRefresh=false){
    ]);
    if(ue) throw ue;if(de) throw de;
    if(updates?.length){ul.replaceChildren();for(const u of updates){const li=document.createElement('li');const strong=document.createElement('strong');strong.textContent=u.title+' ';const span=document.createElement('span');span.textContent=u.body;const small=document.createElement('div');small.className='hint';small.textContent=new Date(u.created_at).toLocaleString();li.append(strong,span,small);ul.append(li);}}
-   if(deliverables?.length){files.replaceChildren();for(const f of deliverables){const row=document.createElement('p');const link=document.createElement('a');link.href='#';link.textContent='↓ '+f.file_name;link.addEventListener('click',async(ev)=>{ev.preventDefault();const {data,error}=await supabase.storage.from('project-deliverables').createSignedUrl(f.storage_path,60);if(error){message('dashboardMessage','Unable to open this file: '+error.message,'error');return;}window.open(data.signedUrl,'_blank','noopener');});row.append(link);if(f.description){const note=document.createElement('small');note.className='hint';note.textContent=' · '+f.description;row.append(note);}files.append(row);}}
+   if(deliverables?.length){files.replaceChildren();for(const f of deliverables){const row=document.createElement('p');const link=document.createElement('a');link.href='#';link.textContent='↓ '+f.file_name;link.addEventListener('click',async(ev)=>{ev.preventDefault();const {data,error}=await supabase.functions.invoke('byot-submissions',{body:{action:'client_download',storage_path:f.storage_path}});if(error){message('dashboardMessage',error.message,'error');return;}window.open(data.download_url,'_blank','noopener');});row.append(link);if(f.description){const note=document.createElement('small');note.className='hint';note.textContent=' · '+f.description;row.append(note);}files.append(row);}}
  }
 }
 $('signOut').addEventListener('click',async()=>{await supabase.auth.signOut();$('dashboard').classList.add('hidden');$('authPanel').classList.remove('hidden');setMode('login');});
