@@ -165,7 +165,7 @@ a{color:inherit}.topbar{background:var(--green);color:#fff;padding:14px 0}.wrap{
     <section class="subpanel" style="margin-top:18px">
       <h3 style="color:var(--green);font: bold 24px Georgia,serif;margin:0 0 6px">Annotation preview</h3>
       <p class="muted">Import a saved Supervisely annotation into Savannah's private review area. The original image and annotation JSON are stored securely for administrator review.</p>
-      <form id="annotationImportForm">
+      <form id="annotationImportForm" hidden>
         <label for="annotationReviewProject">Savannah Supervisely project</label>
         <select id="annotationReviewProject" required style="width:100%;padding:12px;border:1px solid #d7d9d2;border-radius:4px;font:inherit"></select>
         <label for="annotationDatasetId">Supervisely dataset ID</label>
@@ -544,7 +544,7 @@ if(['in_progress','rework'].includes(assignment.assignment_status) && project.to
       }catch(err){status.textContent=err.message||'Unable to submit files.';btn.disabled=false;}});
       submitBox.append(form);card.append(submitBox);
     }
-    if(['in_progress','rework'].includes(assignment.assignment_status) && String(assignment.platform||'').toLowerCase()==='supervisely' && String(project.annotation_tool||'').toLowerCase()==='supervisely' && project.tool_access_mode!=='byot'){
+    if(['in_progress','rework'].includes(assignment.assignment_status) && String(assignment.platform||'').toLowerCase()==='supervisely' && String(project.annotation_tool||'').toLowerCase()==='supervisely' && project.tool_access_mode!=='byot' && /(lidar|point cloud|3d)/i.test((project.service_type||'')+' '+(project.title||'')){
       const submitBox=document.createElement('div');submitBox.className='subpanel';submitBox.style.marginTop='14px';
       const title=document.createElement('h4');title.textContent='Submit completed Supervisely work';title.style.color='var(--green)';submitBox.append(title);
       const pointcloud=/(lidar|point cloud|3d)/i.test((project.service_type||'')+' '+(project.title||''));
@@ -644,27 +644,8 @@ function drawAnnotationOverlay(stage, image, annotation, width, height) {
   stage.append(image,svg);
 }
 async function loadAnnotationReview() {
-  const projectId=$('annotationReviewProject').value;
-  const root=$('annotationPreviewList');
-  root.replaceChildren();
-  if(!projectId){root.textContent='Choose a Supervisely project to load its imported annotations.';return;}
-  const {data,error}=await supabase.functions.invoke('supervisely-annotation-review',{body:{action:'list',project_id:projectId}});
-  if(error)throw error;
-  if(!data?.success)throw new Error(data?.error||'Unable to load annotation previews.');
-  const items=data.annotations||[];
-  if(!items.length){const empty=document.createElement('p');empty.className='muted';empty.textContent='No annotations have been imported for this project yet. Import the saved test annotation above.';root.append(empty);return;}
-  for(const item of items){
-    const card=document.createElement('article');card.className='annotation-preview-card';
-    const heading=document.createElement('h5');heading.textContent=item.image_name||(item.media_type==='pointcloud'?'Point cloud':'Annotated image');
-    const detail=document.createElement('p');detail.className='muted';detail.textContent=(item.label_count||0)+' annotation object(s) · '+(item.media_type==='pointcloud'?'Point cloud ':'Image ')+item.external_image_id+' · Imported '+new Date(item.imported_at).toLocaleString();
-    if(item.media_type==='pointcloud'){const link=document.createElement('a');link.href=item.image_url;link.target='_blank';link.rel='noopener noreferrer';link.textContent='Download imported point-cloud file';card.append(heading,detail,link);root.append(card);continue;}
-    const width=Number(item.image_width)||Number(item.annotation_json?.size?.width)||1;
-    const height=Number(item.image_height)||Number(item.annotation_json?.size?.height)||1;
-    const stage=document.createElement('div');stage.className='annotation-stage';stage.style.aspectRatio=width+'/'+height;
-    const img=document.createElement('img');img.src=item.image_url;img.alt=item.image_name||'Supervisely source image';img.loading='lazy';
-    drawAnnotationOverlay(stage,img,item.annotation_json||{},width,height);
-    card.append(heading,detail,stage);root.append(card);
-  }
+  const root=$('annotationPreviewList');root.replaceChildren();
+  const note=document.createElement('p');note.className='muted';note.textContent='LiDAR annotation previews appear in the reviewer queue after an annotator submits a point-cloud assignment.';root.append(note);
 }
 $('annotationImportForm').addEventListener('submit',async(e)=>{
   e.preventDefault();
